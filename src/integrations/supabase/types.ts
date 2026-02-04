@@ -14,6 +14,64 @@ export type Database = {
   }
   public: {
     Tables: {
+      shifts: {
+        Row: {
+          created_at: string
+          end_time: string
+          id: string
+          schedule_id: string | null
+          shift_date: string
+          shift_type: Database["public"]["Enums"]["shift_type"]
+          staff_id: string
+          start_time: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_time: string
+          id?: string
+          schedule_id?: string | null
+          shift_date: string
+          shift_type: Database["public"]["Enums"]["shift_type"]
+          staff_id: string
+          start_time: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          end_time?: string
+          id?: string
+          schedule_id?: string | null
+          shift_date?: string
+          shift_type?: Database["public"]["Enums"]["shift_type"]
+          staff_id?: string
+          start_time?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shifts_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "weekly_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff_profiles: {
         Row: {
           contract_type: Database["public"]["Enums"]["contract_type"]
@@ -74,6 +132,36 @@ export type Database = {
         }
         Relationships: []
       }
+      weekly_schedules: {
+        Row: {
+          created_at: string
+          id: string
+          published_at: string | null
+          published_by: string | null
+          status: Database["public"]["Enums"]["schedule_status"]
+          updated_at: string
+          week_start_date: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          published_by?: string | null
+          status?: Database["public"]["Enums"]["schedule_status"]
+          updated_at?: string
+          week_start_date: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          published_by?: string | null
+          status?: Database["public"]["Enums"]["schedule_status"]
+          updated_at?: string
+          week_start_date?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       staff_profiles_public: {
@@ -127,6 +215,8 @@ export type Database = {
     Enums: {
       app_role: "admin" | "manager"
       contract_type: "salaried" | "zero_rate"
+      schedule_status: "draft" | "published"
+      shift_type: "morning" | "evening"
       staff_role: "kitchen" | "floor" | "management"
     }
     CompositeTypes: {
@@ -257,6 +347,8 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "manager"],
       contract_type: ["salaried", "zero_rate"],
+      schedule_status: ["draft", "published"],
+      shift_type: ["morning", "evening"],
       staff_role: ["kitchen", "floor", "management"],
     },
   },
