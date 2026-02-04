@@ -22,46 +22,58 @@ export function useAuth() {
   useEffect(() => {
     let isMounted = true;
 
+    const safeSetState = (next: AuthState) => {
+      if (!isMounted) return;
+      setAuthState(next);
+    };
+
     const fetchRole = async (userId: string) => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', userId)
         .maybeSingle();
-      return data?.role as AppRole ?? null;
+
+      // If RLS blocks role reads (or any other error), don't brick the app.
+      if (error) return null;
+      return (data?.role as AppRole) ?? null;
     };
 
     // Get initial session first
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!isMounted) return;
-      
-      const user = session?.user ?? null;
-      const role = user ? await fetchRole(user.id) : null;
-      
-      setAuthState({
-        user,
-        session,
-        loading: false,
-        role,
-      });
-    });
-
-    // Then set up listener for future changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!isMounted) return;
-        
+    supabase.auth
+      .getSession()
+      .then(async ({ data: { session } }) => {
         const user = session?.user ?? null;
         const role = user ? await fetchRole(user.id) : null;
-        
-        setAuthState({
+
+        safeSetState({
           user,
           session,
           loading: false,
           role,
         });
+      })
+      .catch(() => {
+        // Never keep the UI stuck loading on unexpected failures.
+        safeSetState({ user: null, session: null, loading: false, role: null });
+      });
+
+    // Then set up listener for future changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      try {
+        const user = session?.user ?? null;
+        const role = user ? await fetchRole(user.id) : null;
+
+        safeSetState({
+          user,
+          session,
+          loading: false,
+          role,
+        });
+      } catch {
+        safeSetState({ user: null, session: null, loading: false, role: null });
       }
-    );
+    });
 
     return () => {
       isMounted = false;
