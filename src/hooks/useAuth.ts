@@ -26,12 +26,12 @@ export function useAuth() {
         const user = session?.user ?? null;
         
         if (user) {
-          // Fetch user role
+          // Fetch user role - use maybeSingle() to handle users without roles
           const { data: roleData } = await supabase
             .from('user_roles')
             .select('role')
             .eq('user_id', user.id)
-            .single();
+            .maybeSingle();
           
           setAuthState({
             user,
@@ -59,7 +59,7 @@ export function useAuth() {
           .from('user_roles')
           .select('role')
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle();
         
         setAuthState({
           user,
