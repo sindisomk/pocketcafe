@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Coffee, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,15 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const { user, loading, signIn, signUp } = useAuth();
   const navigate = useNavigate();
+
+  // Redirect when user is authenticated
+  useEffect(() => {
+    if (!loading && user) {
+      navigate('/');
+    }
+  }, [user, loading, navigate]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,10 +32,11 @@ export default function Login() {
       
       if (error) {
         toast.error(error.message);
-      } else {
-        navigate('/');
+        setIsLoading(false);
       }
-    } finally {
+      // Don't navigate or reset loading on success - useEffect handles redirect
+    } catch {
+      toast.error('An unexpected error occurred');
       setIsLoading(false);
     }
   };
