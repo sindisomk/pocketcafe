@@ -20,64 +20,51 @@ export function useAuth() {
   });
 
   useEffect(() => {
-    // Set up auth state listener BEFORE getting session
+    let isMounted = true;
+
+    const fetchRole = async (userId: string) => {
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .maybeSingle();
+      return data?.role as AppRole ?? null;
+    };
+
+    // Get initial session first
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!isMounted) return;
+      
+      const user = session?.user ?? null;
+      const role = user ? await fetchRole(user.id) : null;
+      
+      setAuthState({
+        user,
+        session,
+        loading: false,
+        role,
+      });
+    });
+
+    // Then set up listener for future changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        const user = session?.user ?? null;
+        if (!isMounted) return;
         
-        if (user) {
-          // Fetch user role - use maybeSingle() to handle users without roles
-          const { data: roleData } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', user.id)
-            .maybeSingle();
-          
-          setAuthState({
-            user,
-            session,
-            loading: false,
-            role: roleData?.role as AppRole ?? null,
-          });
-        } else {
-          setAuthState({
-            user: null,
-            session: null,
-            loading: false,
-            role: null,
-          });
-        }
-      }
-    );
-
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      const user = session?.user ?? null;
-      
-      if (user) {
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .maybeSingle();
+        const user = session?.user ?? null;
+        const role = user ? await fetchRole(user.id) : null;
         
         setAuthState({
           user,
           session,
           loading: false,
-          role: roleData?.role as AppRole ?? null,
-        });
-      } else {
-        setAuthState({
-          user: null,
-          session: null,
-          loading: false,
-          role: null,
+          role,
         });
       }
-    });
+    );
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, []);
