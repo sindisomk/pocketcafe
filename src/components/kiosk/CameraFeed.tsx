@@ -1,10 +1,25 @@
  import { Suspense, useState, useEffect, useRef, useCallback } from 'react';
-import { Camera, CameraOff, Loader2, LogIn, LogOut, Coffee, Clock } from 'lucide-react';
- import { Button } from '@/components/ui/button';
- import { cn } from '@/lib/utils';
+import { Camera, CameraOff, Loader2, LogIn, LogOut, Coffee, Clock, Scan } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { AttendanceRecord } from '@/types/attendance';
 
 type ClockAction = 'clock_in' | 'start_break' | 'end_break' | 'clock_out';
+
+// Get status badge info based on current attendance state
+const getStatusBadge = (activeRecord?: AttendanceRecord | null) => {
+  if (!activeRecord || activeRecord.status === 'clocked_out') {
+    return { label: 'Not Clocked In', variant: 'secondary' as const, icon: LogIn };
+  }
+  if (activeRecord.status === 'on_break') {
+    return { label: 'On Break', variant: 'default' as const, icon: Coffee };
+  }
+  if (activeRecord.status === 'clocked_in') {
+    return { label: 'Working', variant: 'default' as const, icon: Clock };
+  }
+  return { label: 'Unknown', variant: 'secondary' as const, icon: Clock };
+};
  
  interface CameraFeedProps {
    onFaceDetected: (staffId: string, confidence: number) => void;
@@ -148,6 +163,14 @@ function CameraFeedContent({
      return () => clearInterval(interval);
    }, [cameraActive, isProcessing, captureAndSearch]);
  
+  // Manual scan trigger - bypasses cooldowns
+  const handleManualScan = () => {
+    if (isProcessing || scanningStatus === 'scanning') return;
+    searchCooldownRef.current = false;
+    lastSearchRef.current = 0;
+    captureAndSearch();
+  };
+
   // Quick action handlers
   const handleQuickAction = (action: ClockAction) => {
     if (detectedStaffId && onQuickAction) {
@@ -157,10 +180,13 @@ function CameraFeedContent({
   };
 
   // Determine available actions based on current status
-  const canClockIn = !activeRecord;
+  const canClockIn = !activeRecord || activeRecord.status === 'clocked_out';
   const canStartBreak = activeRecord?.status === 'clocked_in' && !activeRecord.break_start_time;
   const canEndBreak = activeRecord?.status === 'on_break';
   const canClockOut = activeRecord && activeRecord.status !== 'clocked_out';
+
+  // Get status info for display
+  const statusBadge = getStatusBadge(activeRecord);
 
    return (
      <div className="relative w-full h-full min-h-[400px] bg-sidebar rounded-lg overflow-hidden">
@@ -212,72 +238,133 @@ function CameraFeedContent({
                  <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-xl" />
                </div>
  
-               {/* Status text */}
-               <div className="absolute bottom-8 left-1/2 -translate-x-1/2 px-6 py-2 bg-background/90 rounded-full">
-                 <p className="text-sm font-medium text-foreground">
-                   {statusMessage}
-                 </p>
-               </div>
+                {/* Tap to Scan button - shown when idle and no face detected */}
+                {scanningStatus === 'idle' && !detectedStaffId && (
+                  <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-auto">
+                    <Button
+                      size="lg"
+                      className="text-lg px-8 py-6 shadow-lg bg-primary hover:bg-primary/90"
+                      onClick={handleManualScan}
+                    >
+                      <Scan className="h-6 w-6 mr-2" />
+                      Tap to Scan
+                    </Button>
+                  </div>
+                )}
 
-              {/* Quick action overlay when face detected */}
-              {scanningStatus === 'detected' && detectedStaffId && onQuickAction && (
-                <div className="absolute bottom-20 left-1/2 -translate-x-1/2 pointer-events-auto">
-                  <div className="bg-background/95 backdrop-blur-sm rounded-xl p-4 shadow-2xl border border-border min-w-[280px]">
-                    <div className="text-center mb-3">
-                      <p className="font-semibold text-foreground">{staffName}</p>
-                      {lastDetectedConfidence && (
-                        <p className="text-xs text-muted-foreground">
-                          Confidence: {Math.round(lastDetectedConfidence)}%
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex gap-2 justify-center flex-wrap">
-                      {canClockIn && (
-                        <Button
-                          size="sm"
-                          className="bg-success hover:bg-success/90 text-success-foreground"
-                          onClick={() => handleQuickAction('clock_in')}
-                        >
-                          <LogIn className="h-4 w-4 mr-1" />
-                          Clock In
-                        </Button>
-                      )}
-                      {canStartBreak && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="bg-warning hover:bg-warning/90 text-warning-foreground"
-                          onClick={() => handleQuickAction('start_break')}
-                        >
-                          <Coffee className="h-4 w-4 mr-1" />
-                          Break
-                        </Button>
-                      )}
-                      {canEndBreak && (
-                        <Button
-                          size="sm"
-                          onClick={() => handleQuickAction('end_break')}
-                        >
-                          <Clock className="h-4 w-4 mr-1" />
-                          End Break
-                        </Button>
-                      )}
-                      {canClockOut && (
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleQuickAction('clock_out')}
-                        >
-                          <LogOut className="h-4 w-4 mr-1" />
-                          Clock Out
-                        </Button>
-                      )}
+                {/* Scanning indicator */}
+                {scanningStatus === 'scanning' && (
+                  <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-auto">
+                    <div className="bg-background/90 backdrop-blur-sm rounded-full px-6 py-3 flex items-center gap-3">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      <span className="font-medium text-foreground">Scanning...</span>
                     </div>
                   </div>
-                </div>
-              )}
-             </div>
-           )}
+                )}
+
+                {/* Status text - only shown when idle */}
+                {scanningStatus === 'idle' && !detectedStaffId && (
+                  <div className="absolute bottom-8 left-1/2 -translate-x-1/2 px-6 py-2 bg-background/90 rounded-full">
+                    <p className="text-sm font-medium text-foreground">
+                      {statusMessage}
+                    </p>
+                  </div>
+                )}
+
+                {/* Redesigned action overlay when face detected */}
+                {scanningStatus === 'detected' && detectedStaffId && onQuickAction && (
+                  <div className="absolute bottom-16 left-1/2 -translate-x-1/2 pointer-events-auto">
+                    <div className="bg-background/95 backdrop-blur-sm rounded-2xl p-5 shadow-2xl border border-border min-w-[320px]">
+                      {/* Staff info header */}
+                      <div className="text-center mb-4">
+                        <p className="font-bold text-lg text-foreground">{staffName}</p>
+                        {lastDetectedConfidence && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Match: {Math.round(lastDetectedConfidence)}% confident
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Current status badge */}
+                      <div className="flex justify-center mb-4">
+                        <Badge 
+                          variant={statusBadge.variant}
+                          className={cn(
+                            "px-4 py-1.5 text-sm",
+                            statusBadge.label === 'Working' && "bg-success text-success-foreground",
+                            statusBadge.label === 'On Break' && "bg-warning text-warning-foreground"
+                          )}
+                        >
+                          <statusBadge.icon className="h-4 w-4 mr-2" />
+                          Currently: {statusBadge.label}
+                        </Badge>
+                      </div>
+
+                      {/* Action buttons - contextual based on status */}
+                      <div className="space-y-2">
+                        {/* Not clocked in - show primary Clock In button */}
+                        {canClockIn && (
+                          <Button
+                            size="lg"
+                            className="w-full bg-success hover:bg-success/90 text-success-foreground text-base py-6"
+                            onClick={() => handleQuickAction('clock_in')}
+                          >
+                            <LogIn className="h-5 w-5 mr-2" />
+                            Clock In
+                          </Button>
+                        )}
+
+                        {/* Clocked in - show Break and Clock Out options */}
+                        {canStartBreak && (
+                          <div className="flex gap-2">
+                            <Button
+                              size="lg"
+                              className="flex-1 bg-warning hover:bg-warning/90 text-warning-foreground"
+                              onClick={() => handleQuickAction('start_break')}
+                            >
+                              <Coffee className="h-5 w-5 mr-2" />
+                              Start Break
+                            </Button>
+                            <Button
+                              size="lg"
+                              variant="destructive"
+                              className="flex-1"
+                              onClick={() => handleQuickAction('clock_out')}
+                            >
+                              <LogOut className="h-5 w-5 mr-2" />
+                              Clock Out
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* On break - show End Break as primary */}
+                        {canEndBreak && (
+                          <div className="space-y-2">
+                            <Button
+                              size="lg"
+                              className="w-full bg-primary hover:bg-primary/90 text-base py-6"
+                              onClick={() => handleQuickAction('end_break')}
+                            >
+                              <Clock className="h-5 w-5 mr-2" />
+                              End Break
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="w-full text-muted-foreground"
+                              onClick={() => handleQuickAction('clock_out')}
+                            >
+                              <LogOut className="h-4 w-4 mr-1" />
+                              Clock Out Instead
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
  
            {isProcessing && (
              <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
