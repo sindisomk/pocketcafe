@@ -123,15 +123,15 @@ export default function Kiosk() {
     setIsProcessing(true);
      
     try {
-      // Fetch staff details from public view
+      // Fetch staff details from manager view (secure, excludes sensitive fields)
       const { data, error } = await supabase
-        .from('staff_profiles_public')
+        .from('staff_profiles_manager')
         .select('id, name, profile_photo_url')
         .eq('id', staffId)
         .single();
       
       if (!error && data) {
-        setDetectedStaffName(data.name as string);
+        setDetectedStaffName(data.name);
       }
     } finally {
       setIsProcessing(false);

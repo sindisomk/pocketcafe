@@ -11,11 +11,11 @@
  export function useKioskStaff() {
    const query = useQuery({
      queryKey: ['kiosk-staff'],
-     queryFn: async () => {
-       const { data, error } = await supabase
-         .from('staff_profiles_public')
-         .select('id, name, profile_photo_url, role')
-         .order('name');
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('staff_profiles_manager')
+        .select('id, name, profile_photo_url, role')
+        .order('name');
        
        if (error) throw error;
        
