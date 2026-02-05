@@ -24,21 +24,46 @@
  import {
    Select,
    SelectContent,
+  SelectGroup,
    SelectItem,
+  SelectLabel,
    SelectTrigger,
    SelectValue,
  } from '@/components/ui/select';
- import { Switch } from '@/components/ui/switch';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
  import { Loader2 } from 'lucide-react';
- import { StaffProfile, StaffRole, ContractType } from '@/types/staff';
+import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT_LABELS } from '@/types/staff';
  import { useStaff } from '@/hooks/useStaff';
  
  // UK National Insurance Number format validation
  const niNumberRegex = /^[A-CEGHJ-PR-TW-Z]{2}\d{6}[A-D]$/i;
  
+// UK phone number validation (basic)
+const ukPhoneRegex = /^(\+44|0)[1-9]\d{8,9}$/;
+
  const staffFormSchema = z.object({
    name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100, 'Name must be less than 100 characters'),
-   role: z.enum(['kitchen', 'floor', 'management'] as const),
+  contact_email: z.string().email('Invalid email address').optional().or(z.literal('')),
+  contact_phone: z
+    .string()
+    .transform((val) => val.replace(/\s/g, ''))
+    .refine((val) => val === '' || ukPhoneRegex.test(val), {
+      message: 'Invalid UK phone number',
+    })
+    .optional()
+    .or(z.literal('')),
+  role: z.enum(['kitchen', 'floor', 'management', 'bar'] as const),
+  job_title: z.enum([
+    'server', 'host', 'bartender', 'barback', 'busser', 'food_runner',
+    'head_chef', 'sous_chef', 'line_cook', 'prep_cook', 'dishwasher', 'kitchen_porter',
+    'bar_manager', 'mixologist',
+    'general_manager', 'assistant_manager', 'shift_supervisor', 'floor_manager'
+  ] as const).optional().or(z.literal('')),
+  start_date: z.date().optional(),
    contract_type: z.enum(['salaried', 'zero_rate'] as const),
    hourly_rate: z.coerce.number().min(0, 'Hourly rate must be positive').max(500, 'Hourly rate seems too high'),
    ni_number: z
@@ -61,9 +86,10 @@
  }
  
  const roleOptions: { value: StaffRole; label: string }[] = [
-   { value: 'kitchen', label: 'Kitchen' },
-   { value: 'floor', label: 'Floor' },
-   { value: 'management', label: 'Management' },
+  { value: 'floor', label: DEPARTMENT_LABELS.floor },
+  { value: 'kitchen', label: DEPARTMENT_LABELS.kitchen },
+  { value: 'bar', label: DEPARTMENT_LABELS.bar },
+  { value: 'management', label: DEPARTMENT_LABELS.management },
  ];
  
  const contractOptions: { value: ContractType; label: string; description: string }[] = [
@@ -80,7 +106,11 @@
      resolver: zodResolver(staffFormSchema),
      defaultValues: {
        name: '',
+      contact_email: '',
+      contact_phone: '',
        role: 'floor',
+      job_title: '',
+      start_date: undefined,
        contract_type: 'zero_rate',
        hourly_rate: 11.44, // UK National Living Wage 2024 (21+)
        ni_number: '',
@@ -88,13 +118,22 @@
      },
    });
  
+  const selectedRole = form.watch('role');
+
+  // Filter job titles based on selected department
+  const filteredJobTitles = JOB_TITLES.filter((jt) => jt.department === selectedRole);
+
    // Reset form when dialog opens/closes or staff changes
    useEffect(() => {
      if (open) {
        if (staff) {
          form.reset({
            name: staff.name,
+          contact_email: staff.contact_email ?? '',
+          contact_phone: staff.contact_phone ?? '',
            role: staff.role,
+          job_title: (staff.job_title as JobTitle) ?? '',
+          start_date: staff.start_date ? new Date(staff.start_date) : undefined,
            contract_type: staff.contract_type,
            hourly_rate: staff.hourly_rate,
            ni_number: staff.ni_number ?? '',
@@ -103,7 +142,11 @@
        } else {
          form.reset({
            name: '',
+          contact_email: '',
+          contact_phone: '',
            role: 'floor',
+          job_title: '',
+          start_date: undefined,
            contract_type: 'zero_rate',
            hourly_rate: 11.44,
            ni_number: '',
@@ -118,7 +161,11 @@
      try {
        const payload = {
          name: values.name,
+        contact_email: values.contact_email || null,
+        contact_phone: values.contact_phone || null,
          role: values.role,
+        job_title: (values.job_title as JobTitle) || null,
+        start_date: values.start_date ? format(values.start_date, 'yyyy-MM-dd') : null,
          contract_type: values.contract_type,
          hourly_rate: values.hourly_rate,
          ni_number: values.ni_number || null,
@@ -154,7 +201,7 @@
            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
              {/* Personal Information */}
              <div className="space-y-4">
-               <h3 className="text-sm font-medium text-muted-foreground">Personal Information</h3>
+              <h3 className="text-sm font-medium text-muted-foreground">Personal & Contact Information</h3>
                
                <FormField
                  control={form.control}
@@ -170,6 +217,44 @@
                  )}
                />
  
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="contact_email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="email"
+                          placeholder="john@example.com" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="contact_phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="tel"
+                          placeholder="07700 900123" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
                <FormField
                  control={form.control}
                  name="ni_number"
@@ -217,6 +302,51 @@
              <div className="space-y-4">
                <h3 className="text-sm font-medium text-muted-foreground">Employment Details</h3>
  
+              <FormField
+                control={form.control}
+                name="start_date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Start Date</FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full pl-3 text-left font-normal",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value ? (
+                              format(field.value, "PPP")
+                            ) : (
+                              <span>Pick a date</span>
+                            )}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={field.onChange}
+                          disabled={(date) =>
+                            date > new Date() || date < new Date("1990-01-01")
+                          }
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <FormDescription>
+                      Employee's first day of work
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
                <FormField
                  control={form.control}
                  name="role"
@@ -242,6 +372,37 @@
                  )}
                />
  
+              <FormField
+                control={form.control}
+                name="job_title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Job Title / Role</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ''}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select job title" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectLabel>{DEPARTMENT_LABELS[selectedRole]}</SelectLabel>
+                          {filteredJobTitles.map((jt) => (
+                            <SelectItem key={jt.value} value={jt.value}>
+                              {jt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Specific role within the department
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
                <FormField
                  control={form.control}
                  name="contract_type"

@@ -13,6 +13,7 @@ import Attendance from "./pages/Attendance";
  import Payroll from "./pages/Payroll";
  import Kiosk from "./pages/Kiosk";
 import Settings from "./pages/Settings";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
  import { ErrorBoundary } from "./components/system/ErrorBoundary";
  
@@ -84,6 +85,7 @@ const queryClient = new QueryClient({
                <Route path="/payroll" element={<Payroll />} />
                <Route path="/kiosk" element={<Kiosk />} />
                <Route path="/settings" element={<Settings />} />
+              <Route path="/reports" element={<Reports />} />
                <Route path="*" element={<NotFound />} />
              </Routes>
            </ErrorBoundary>
