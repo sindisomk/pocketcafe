@@ -1,4 +1,4 @@
-import { Users, LayoutDashboard, Calendar, Clock, Settings, LogOut, Coffee } from 'lucide-react';
+ import { Users, LayoutDashboard, Calendar, Clock, Settings, LogOut, Coffee, CalendarDays, PoundSterling, MonitorSmartphone } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   Sidebar,
@@ -21,6 +21,8 @@ const navItems = [
   { title: 'Staff', url: '/staff', icon: Users },
   { title: 'Schedule', url: '/schedule', icon: Calendar },
   { title: 'Attendance', url: '/attendance', icon: Clock },
+   { title: 'Leave', url: '/leave', icon: CalendarDays },
+   { title: 'Payroll', url: '/payroll', icon: PoundSterling },
   { title: 'Settings', url: '/settings', icon: Settings },
 ];
 

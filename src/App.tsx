@@ -8,6 +8,9 @@ import Login from "./pages/Login";
 import Staff from "./pages/Staff";
 import Schedule from "./pages/Schedule";
 import Attendance from "./pages/Attendance";
+ import Leave from "./pages/Leave";
+ import Payroll from "./pages/Payroll";
+ import Kiosk from "./pages/Kiosk";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
@@ -32,6 +35,9 @@ const App = () => (
           <Route path="/staff" element={<Staff />} />
           <Route path="/schedule" element={<Schedule />} />
           <Route path="/attendance" element={<Attendance />} />
+           <Route path="/leave" element={<Leave />} />
+           <Route path="/payroll" element={<Payroll />} />
+           <Route path="/kiosk" element={<Kiosk />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

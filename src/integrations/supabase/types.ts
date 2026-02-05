@@ -14,6 +14,150 @@ export type Database = {
   }
   public: {
     Tables: {
+      attendance_records: {
+        Row: {
+          break_end_time: string | null
+          break_start_time: string | null
+          clock_in_time: string
+          clock_out_time: string | null
+          created_at: string
+          face_match_confidence: number | null
+          id: string
+          notes: string | null
+          override_by: string | null
+          override_pin_used: boolean | null
+          staff_id: string
+          status: Database["public"]["Enums"]["attendance_status"]
+          updated_at: string
+        }
+        Insert: {
+          break_end_time?: string | null
+          break_start_time?: string | null
+          clock_in_time?: string
+          clock_out_time?: string | null
+          created_at?: string
+          face_match_confidence?: number | null
+          id?: string
+          notes?: string | null
+          override_by?: string | null
+          override_pin_used?: boolean | null
+          staff_id: string
+          status?: Database["public"]["Enums"]["attendance_status"]
+          updated_at?: string
+        }
+        Update: {
+          break_end_time?: string | null
+          break_start_time?: string | null
+          clock_in_time?: string
+          clock_out_time?: string | null
+          created_at?: string
+          face_match_confidence?: number | null
+          id?: string
+          notes?: string | null
+          override_by?: string | null
+          override_pin_used?: boolean | null
+          staff_id?: string
+          status?: Database["public"]["Enums"]["attendance_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_records_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_records_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leave_requests: {
+        Row: {
+          created_at: string
+          end_date: string
+          id: string
+          reason: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          staff_id: string
+          start_date: string
+          status: Database["public"]["Enums"]["leave_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_date: string
+          id?: string
+          reason?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          staff_id: string
+          start_date: string
+          status?: Database["public"]["Enums"]["leave_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          end_date?: string
+          id?: string
+          reason?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          staff_id?: string
+          start_date?: string
+          status?: Database["public"]["Enums"]["leave_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_requests_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leave_requests_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manager_pins: {
+        Row: {
+          created_at: string
+          id: string
+          pin_hash: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          pin_hash: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          pin_hash?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       shifts: {
         Row: {
           created_at: string
@@ -214,7 +358,9 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "manager"
+      attendance_status: "clocked_in" | "on_break" | "clocked_out"
       contract_type: "salaried" | "zero_rate"
+      leave_status: "pending" | "approved" | "rejected"
       schedule_status: "draft" | "published"
       shift_type: "morning" | "evening"
       staff_role: "kitchen" | "floor" | "management"
@@ -346,7 +492,9 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "manager"],
+      attendance_status: ["clocked_in", "on_break", "clocked_out"],
       contract_type: ["salaried", "zero_rate"],
+      leave_status: ["pending", "approved", "rejected"],
       schedule_status: ["draft", "published"],
       shift_type: ["morning", "evening"],
       staff_role: ["kitchen", "floor", "management"],
