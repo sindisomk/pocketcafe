@@ -8,10 +8,36 @@
  
  const FACEPP_API_URL = "https://api-us.faceplusplus.com/facepp/v3";
  const FACESET_OUTER_ID = "pocketcafe-staff";
+ const MAX_RETRIES = 3;
+ const INITIAL_BACKOFF_MS = 1000;
  
  interface EnrollRequest {
    staffId: string;
    imageBase64: string;
+ }
+ 
+ // Helper function to make Face++ API requests with retry logic
+ async function facePlusPlusRequest(
+   endpoint: string, 
+   formData: FormData, 
+   retries = 0
+ ): Promise<{ response: Response; data: any }> {
+   const response = await fetch(`${FACEPP_API_URL}/${endpoint}`, {
+     method: "POST",
+     body: formData,
+   });
+ 
+   const data = await response.json();
+ 
+   // Check for concurrency limit error
+   if (data.error_message === "CONCURRENCY_LIMIT_EXCEEDED" && retries < MAX_RETRIES) {
+     const delay = INITIAL_BACKOFF_MS * Math.pow(2, retries);
+     console.log(`[face-enroll] Concurrency limit hit, retrying ${endpoint} in ${delay}ms (attempt ${retries + 1}/${MAX_RETRIES})`);
+     await new Promise(resolve => setTimeout(resolve, delay));
+     return facePlusPlusRequest(endpoint, formData, retries + 1);
+   }
+ 
+   return { response, data };
  }
  
  serve(async (req) => {
@@ -78,16 +104,11 @@
      detectFormData.append("api_secret", FACEPP_API_SECRET);
      detectFormData.append("image_base64", imageBase64);
  
-     const detectResponse = await fetch(`${FACEPP_API_URL}/detect`, {
-       method: "POST",
-       body: detectFormData,
-     });
- 
-     const detectData = await detectResponse.json();
+      const { response: detectResponse, data: detectData } = await facePlusPlusRequest("detect", detectFormData);
      console.log(`[face-enroll] Detect response:`, JSON.stringify(detectData));
  
-     if (!detectResponse.ok) {
-       throw new Error(`Face++ Detect API error: ${JSON.stringify(detectData)}`);
+      if (detectData.error_message) {
+        throw new Error(`Face++ Detect API error: ${detectData.error_message}`);
      }
  
      if (!detectData.faces || detectData.faces.length === 0) {
@@ -115,12 +136,7 @@
      getSetFormData.append("api_secret", FACEPP_API_SECRET);
      getSetFormData.append("outer_id", FACESET_OUTER_ID);
  
-     const getSetResponse = await fetch(`${FACEPP_API_URL}/faceset/getdetail`, {
-       method: "POST",
-       body: getSetFormData,
-     });
- 
-     const getSetData = await getSetResponse.json();
+      const { data: getSetData } = await facePlusPlusRequest("faceset/getdetail", getSetFormData);
       console.log(`[face-enroll] FaceSet getdetail response:`, JSON.stringify(getSetData));
  
       if (getSetData.faceset_token) {
@@ -136,12 +152,7 @@
        createSetFormData.append("outer_id", FACESET_OUTER_ID);
        createSetFormData.append("display_name", "PocketCafe Staff");
  
-       const createSetResponse = await fetch(`${FACEPP_API_URL}/faceset/create`, {
-         method: "POST",
-         body: createSetFormData,
-       });
- 
-       const createSetData = await createSetResponse.json();
+        const { data: createSetData } = await facePlusPlusRequest("faceset/create", createSetFormData);
        console.log(`[face-enroll] FaceSet created:`, JSON.stringify(createSetData));
  
         if (createSetData.faceset_token) {
@@ -166,15 +177,10 @@
      addFaceFormData.append("outer_id", FACESET_OUTER_ID);
      addFaceFormData.append("face_tokens", faceToken);
  
-     const addFaceResponse = await fetch(`${FACEPP_API_URL}/faceset/addface`, {
-       method: "POST",
-       body: addFaceFormData,
-     });
- 
-     const addFaceData = await addFaceResponse.json();
+      const { response: addFaceResponse, data: addFaceData } = await facePlusPlusRequest("faceset/addface", addFaceFormData);
      console.log(`[face-enroll] Add face response:`, JSON.stringify(addFaceData));
  
-     if (!addFaceResponse.ok) {
+      if (addFaceData.error_message) {
        throw new Error(`Failed to add face to FaceSet: ${JSON.stringify(addFaceData)}`);
      }
  
