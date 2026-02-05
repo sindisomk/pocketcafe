@@ -1,98 +1,182 @@
 
-Goal: eliminate the “blank / page” by (a) making sure we never get stuck in an infinite auth loading state, and (b) surfacing the *real* runtime error (including “Component is not a function” / unhandled promise rejections) instead of silently white-screening.
+# Codebase Audit & Cleanup Plan for PocketCafe
 
-## What I found from debugging
-- `/login` renders correctly (Welcome to PocketCafe, Email/Password, Sign In).
-- `/` in the controlled browser session renders essentially “nothing” (at most a subtle skeleton), and there are **no actionable runtime errors shown** in the browser tool console—only unrelated `postMessage` origin warnings.
-- Your earlier console logs show:
-  - `Function components cannot be given refs...` (this was previously Skeleton-related, but Skeleton is now correctly `forwardRef`.)
-  - `UNHANDLED_PROMISE_REJECTION` with `TypeError: Component is not a function`, which can crash React rendering and produce a blank page.
-- The most plausible current failure mode is: **the app hits a runtime error outside React’s render stack (promise rejection), or `useAuth()` never flips `loading` to false (or flips too late), leaving `AppLayout` stuck on the loading skeleton**. Because this happens early, the UI looks blank and provides no clue.
+## Executive Summary
 
-## Implementation plan (real fix, not guesswork)
+After thoroughly auditing the codebase, I've identified issues across several categories: console errors, unused imports/code, missing functionality, navigation inconsistencies, and code quality improvements.
 
-### 1) Add a global “last line of defense” error handler in `App.tsx`
-Purpose: catch and report the exact error causing the blank screen, especially:
-- `unhandledrejection` (matches your error report)
-- `error` (uncaught exceptions)
+---
 
-What we’ll do:
-- Add a `useEffect` in `App.tsx` that:
-  - `console.error()` logs the error/rejection reason
-  - shows a visible toast (using the existing Sonner `toast`) with a short message
-  - (optionally) stores the last error in React state so we can render a visible “App crashed” fallback panel
+## 1. Critical Console Errors to Fix
 
-Why this matters:
-- Your reported error is explicitly an **UNHANDLED_PROMISE_REJECTION**. Without this, the app can “die” with no UI.
+### Issue 1.1: Navigate Component Ref Warning
+**Location:** `src/components/layout/AppLayout.tsx` (line 25)  
+**Error:** `Warning: Function components cannot be given refs`
 
-### 2) Wrap routing in an Error Boundary with a visible fallback UI
-Purpose: prevent total blanking when a render-time error happens, and provide a recovery path.
+The `<Navigate>` component from React Router is being rendered directly inside `AppLayout`. When the component renders, React Router's internal handling tries to pass a ref, but `Navigate` doesn't support refs.
 
-What we’ll do:
-- Create a small `ErrorBoundary` component (new file, e.g. `src/components/system/ErrorBoundary.tsx`):
-  - `componentDidCatch` logs error + stack
-  - Fallback UI shows:
-    - “Something went wrong”
-    - a button to go to `/login`
-    - a “Reload” button
-    - (in dev) a collapsible panel with error message/stack
-- Wrap the `<Routes>` (or the whole router area) with `<ErrorBoundary>` in `App.tsx`.
+**Fix:** Wrap the Navigate in a fragment or div, or handle the redirect differently using the `useEffect` + `useNavigate` pattern.
 
-Why this matters:
-- If “Component is not a function” is thrown during render/hydration/update, an Error Boundary will stop the app from becoming a white screen and will help us pinpoint which subtree fails.
+```text
+Current:
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
-### 3) Harden `useAuth()` so `loading` cannot hang forever
-Purpose: ensure `/` never looks blank just because auth never resolves.
+Should be:
+  // Option 1: Use the useEffect + useNavigate pattern
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/login', { replace: true });
+    }
+  }, [loading, user, navigate]);
 
-Changes in `src/hooks/useAuth.ts`:
-- Add a short watchdog timeout (e.g. 2500–4000ms):
-  - If `loading` is still true after the timeout, force `loading: false` and `user: null`
-  - This guarantees `AppLayout` will redirect to `/login` instead of hanging
-- Make `fetchRole()` fully defensive:
-  - wrap the query in `try/catch`
-  - return `null` on any failure
-- Make the initial session fetch robust:
-  - handle the case where `.getSession()` resolves but the role fetch hangs by adding a role-fetch timeout (optional but recommended)
+  // During redirect, render null or loading state
+  if (!user) {
+    return null;
+  }
+```
 
-Why this matters:
-- Today `/login` works, but `/` is protected by `AppLayout`. If auth hangs, `AppLayout` shows only the loader forever, which users interpret as “blank page”.
+### Issue 1.2: Login Page Ref Warning
+**Location:** `src/pages/Login.tsx`  
+**Error:** Similar ref warning in console
 
-### 4) Add targeted instrumentation to identify the exact “Component is not a function” source
-Purpose: stop guessing which component is invalid.
+The Login page component itself isn't wrapped in `forwardRef`, but React Router's internal routing attempts to pass refs to it. This is generally harmless but should be addressed for cleaner console output.
 
-What we’ll log (temporarily, in dev-safe places):
-- In the global handlers, log:
-  - `typeof event.reason`, `event.reason?.message`, `event.reason?.stack`
-- In the ErrorBoundary fallback, display the component stack (React provides it) if available.
-- Optionally: add a single `console.log("App booted", { buildVersion })` in `App.tsx` so we can confirm you’re running the latest bundle when you report back.
+---
 
-### 5) Verification steps (what you’ll test after implementation)
-1. Open `/`:
-   - Expected: either the dashboard loads, or you get redirected to `/login`.
-   - Not acceptable: infinite blank/skeleton with no navigation.
-2. If an error still occurs:
-   - Expected: you see a toast and/or an ErrorBoundary fallback showing a meaningful error message instead of a blank screen.
-3. Navigate to `/login`, sign in:
-   - Expected: you land on `/` and see the dashboard.
-4. Re-check console:
-   - We should now see the real stack trace pointing to the exact component/module if “Component is not a function” persists.
+## 2. Unused Imports & Dead Code
 
-## Files that will be changed/added
-- Update: `src/App.tsx`
-  - Add global `unhandledrejection` + `error` listeners
-  - Wrap router area in `ErrorBoundary`
-- Update: `src/hooks/useAuth.ts`
-  - Add watchdog timeout + defensive role fetching
-- Add: `src/components/system/ErrorBoundary.tsx` (new)
-  - Reusable error boundary + fallback UI
+### Issue 2.1: Unused Import in Index.tsx
+**Location:** `src/pages/Index.tsx` (line 5)  
+**Problem:** `TrendingUp` is imported from lucide-react but never used in the component.
 
-## Why this will “get to the bottom of it”
-- Right now, you have a production-style symptom (blank screen) but not enough surfaced diagnostics.
-- This plan both:
-  1) prevents hanging UI states (auth watchdog), and
-  2) forces the app to reveal the real underlying exception/rejection (global handlers + ErrorBoundary),
-so we can fix the actual offending module if it’s still present.
+```text
+Remove:
+  import { Users, Clock, Calendar, TrendingUp, AlertTriangle, ... }
+                              ^^^^^^^^^^^
+```
 
-## Expected outcome
-- `/` will no longer be blank with no information.
-- If the underlying bug still exists, we will have a precise error message and stack trace to fix it in the next iteration.
+### Issue 2.2: Orphaned NavLink Component
+**Location:** `src/components/NavLink.tsx`  
+**Problem:** This custom NavLink wrapper component exists but is never imported anywhere in the codebase. All files use React Router's `NavLink` directly.
+
+**Fix:** Delete `src/components/NavLink.tsx` as it's unused.
+
+### Issue 2.3: Unused cn Import in Leave.tsx
+**Location:** `src/pages/Leave.tsx` (line 14)  
+**Problem:** `cn` is imported from `@/lib/utils` but never used in the component.
+
+---
+
+## 3. Navigation & Route Issues
+
+### Issue 3.1: Inconsistent Mobile Navigation
+**Location:** `src/components/layout/MobileNav.tsx`  
+**Problem:** The mobile navigation only shows 5 items (Dashboard, Staff, Schedule, Attendance, Settings) while the sidebar shows 7 items (also includes Leave and Payroll).
+
+**Fix:** Add Leave and Payroll to the mobile navigation for feature parity.
+
+### Issue 3.2: MonitorSmartphone Icon Imported But Not Used
+**Location:** `src/components/layout/AppSidebar.tsx` (line 1)  
+**Problem:** `MonitorSmartphone` is imported but not used (the Kiosk link is not in the sidebar navigation).
+
+---
+
+## 4. Missing Functionality (Placeholder Code)
+
+### Issue 4.1: Add Staff Button Non-Functional
+**Location:** `src/components/staff/StaffDirectory.tsx` (line 61-63)  
+**Problem:** The "Add Staff" button exists but has no onClick handler - it's just a styled button that does nothing.
+
+**Recommendation:** Either implement the add staff dialog/form or remove the button until the feature is ready.
+
+### Issue 4.2: Edit Staff Button Non-Functional
+**Location:** `src/components/staff/StaffDetailSheet.tsx` (line 142-145)  
+**Problem:** The "Edit Staff Member" button exists but has no onClick handler.
+
+### Issue 4.3: Manager PIN Verification is a Placeholder
+**Location:** `src/components/kiosk/ManagerPinPad.tsx` (line 50-62)  
+**Problem:** PIN verification accepts any 4+ digit PIN instead of validating against the `manager_pins` table.
+
+### Issue 4.4: Face++ Integration is a Placeholder
+**Location:** `src/components/kiosk/CameraFeed.tsx` (line 53-64)  
+**Problem:** Face detection is simulated, not integrated with Face++ API.
+
+---
+
+## 5. Type Safety Issues
+
+### Issue 5.1: Any Cast in Kiosk.tsx
+**Location:** `src/pages/Kiosk.tsx` (line 138)  
+**Problem:** `activeRecord as any` is used, bypassing TypeScript's type checking.
+
+```text
+activeRecord={activeRecord as any}
+                           ^^^^^^
+```
+
+**Fix:** Properly type the activeRecord or use the correct type from the attendance types.
+
+---
+
+## 6. Component Quality Improvements
+
+### Issue 6.1: Settings Page is a Placeholder
+**Location:** `src/pages/Settings.tsx`  
+**Problem:** The Settings page shows "Coming in Phase 3" with no actual functionality. Consider either:
+- Implementing basic settings (e.g., user profile, theme toggle)
+- Adding a more helpful placeholder with planned features
+
+---
+
+## Implementation Order
+
+### Phase 1: Fix Console Errors (High Priority)
+1. Fix Navigate ref warning in AppLayout.tsx
+2. Address Login page ref warning
+
+### Phase 2: Code Cleanup (Medium Priority)
+3. Remove unused TrendingUp import from Index.tsx
+4. Remove unused cn import from Leave.tsx
+5. Delete orphaned NavLink component
+6. Remove unused MonitorSmartphone import from AppSidebar.tsx
+
+### Phase 3: Navigation Parity (Medium Priority)
+7. Add Leave and Payroll to MobileNav.tsx
+
+### Phase 4: Fix Placeholder Code (Lower Priority)
+8. Add onClick handler to Add Staff button (or remove it)
+9. Add onClick handler to Edit Staff button (or remove it)
+10. Fix any cast in Kiosk.tsx
+
+---
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/components/layout/AppLayout.tsx` | Fix Navigate ref warning using useNavigate hook |
+| `src/pages/Index.tsx` | Remove unused TrendingUp import |
+| `src/pages/Leave.tsx` | Remove unused cn import |
+| `src/components/NavLink.tsx` | DELETE FILE (orphaned) |
+| `src/components/layout/MobileNav.tsx` | Add Leave and Payroll nav items |
+| `src/components/layout/AppSidebar.tsx` | Remove unused MonitorSmartphone import |
+| `src/components/staff/StaffDirectory.tsx` | Add TODO comment or implement Add Staff |
+| `src/components/staff/StaffDetailSheet.tsx` | Add TODO comment or implement Edit Staff |
+| `src/pages/Kiosk.tsx` | Fix any cast for activeRecord |
+
+---
+
+## Summary of Issues Found
+
+| Category | Count | Severity |
+|----------|-------|----------|
+| Console Errors | 2 | High |
+| Unused Imports | 4 | Low |
+| Orphaned Files | 1 | Low |
+| Navigation Gaps | 1 | Medium |
+| Placeholder Code | 4 | Medium |
+| Type Safety | 1 | Medium |
+
+Total: 13 issues identified for cleanup
