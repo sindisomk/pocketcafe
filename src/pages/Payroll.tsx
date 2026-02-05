@@ -11,6 +11,7 @@
   Calculator,
   Timer
  } from 'lucide-react';
+import { Banknote, Receipt } from 'lucide-react';
  import { AppLayout } from '@/components/layout/AppLayout';
  import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
  import { Button } from '@/components/ui/button';
@@ -60,6 +61,9 @@
       overtimePay: payrollSummaries.reduce((sum, s) => sum + s.overtimePay, 0),
        grossPay: payrollSummaries.reduce((sum, s) => sum + s.grossPay, 0),
        holidayAccrual: payrollSummaries.reduce((sum, s) => sum + s.holidayAccrual, 0),
+      incomeTax: payrollSummaries.reduce((sum, s) => sum + s.incomeTax, 0),
+      employeeNIC: payrollSummaries.reduce((sum, s) => sum + s.employeeNIC, 0),
+      netPay: payrollSummaries.reduce((sum, s) => sum + s.netPay, 0),
      };
    }, [payrollSummaries]);
  
@@ -145,7 +149,7 @@
          )}
  
          {/* Summary Cards */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
            <Card>
              <CardHeader className="pb-2">
                <CardDescription className="flex items-center gap-2">
@@ -159,19 +163,6 @@
              </CardContent>
            </Card>
  
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription className="flex items-center gap-2">
-                <Timer className="h-4 w-4" />
-                Overtime Hours
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{totals.overtimeHours.toFixed(1)}</p>
-              <p className="text-sm text-muted-foreground">@ 1.5x rate</p>
-            </CardContent>
-          </Card>
-
            <Card>
              <CardHeader className="pb-2">
                <CardDescription className="flex items-center gap-2">
@@ -185,6 +176,45 @@
              </CardContent>
            </Card>
  
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription className="flex items-center gap-2">
+                <Receipt className="h-4 w-4" />
+                PAYE Tax
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold text-destructive">-£{totals.incomeTax.toFixed(2)}</p>
+              <p className="text-sm text-muted-foreground">income tax</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription className="flex items-center gap-2">
+                <Receipt className="h-4 w-4" />
+                Employee NIC
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold text-destructive">-£{totals.employeeNIC.toFixed(2)}</p>
+              <p className="text-sm text-muted-foreground">national insurance</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-primary/50 bg-primary/5">
+            <CardHeader className="pb-2">
+              <CardDescription className="flex items-center gap-2">
+                <Banknote className="h-4 w-4" />
+                Net Pay
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold text-primary">£{totals.netPay.toFixed(2)}</p>
+              <p className="text-sm text-muted-foreground">take-home pay</p>
+            </CardContent>
+          </Card>
+
            <Card>
              <CardHeader className="pb-2">
                <CardDescription className="flex items-center gap-2">
@@ -207,7 +237,7 @@
                Staff Payroll Breakdown
              </CardTitle>
              <CardDescription>
-               Includes 30-minute paid break per shift as per company policy
+                Includes 30-minute paid break, PAYE (UK 2024/25 rates), and Employee NIC deductions
              </CardDescription>
            </CardHeader>
            <CardContent>
@@ -223,11 +253,12 @@
                    <TableRow>
                      <TableHead>Staff Member</TableHead>
                      <TableHead className="text-right">Total Hours</TableHead>
-                      <TableHead className="text-right">Overtime</TableHead>
-                     <TableHead className="text-right">Paid Breaks</TableHead>
-                     <TableHead className="text-right">Rate (£/hr)</TableHead>
-                      <TableHead className="text-right">OT Pay</TableHead>
                      <TableHead className="text-right">Gross Pay</TableHead>
+                    <TableHead className="text-right">Tax Code</TableHead>
+                    <TableHead className="text-right">PAYE Tax</TableHead>
+                    <TableHead className="text-right">NIC Cat</TableHead>
+                    <TableHead className="text-right">Employee NIC</TableHead>
+                    <TableHead className="text-right">Net Pay</TableHead>
                      <TableHead className="text-right">Holiday Accrual</TableHead>
                    </TableRow>
                  </TableHeader>
@@ -251,28 +282,27 @@
                            <TableCell className="text-right font-mono">
                              {summary.totalHoursWorked.toFixed(2)}
                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              {summary.overtimeHours > 0 ? (
-                                <span className="text-primary">{summary.overtimeHours.toFixed(2)}</span>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                           <TableCell className="text-right font-mono text-muted-foreground">
-                             {summary.paidBreakHours.toFixed(2)}
+                          <TableCell className="text-right font-mono font-medium">
+                            £{summary.grossPay.toFixed(2)}
                            </TableCell>
-                           <TableCell className="text-right font-mono">
-                             £{summary.hourlyRate.toFixed(2)}
+                          <TableCell className="text-right">
+                            <Badge variant="secondary" className="font-mono text-xs">
+                              {summary.taxCode}
+                            </Badge>
                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              {summary.overtimePay > 0 ? (
-                                <span className="text-primary">£{summary.overtimePay.toFixed(2)}</span>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                           <TableCell className="text-right font-mono font-medium">
-                             £{summary.grossPay.toFixed(2)}
+                          <TableCell className="text-right font-mono text-destructive">
+                            {summary.incomeTax > 0 ? `-£${summary.incomeTax.toFixed(2)}` : '—'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant="outline" className="font-mono text-xs">
+                              {summary.nicCategory}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-destructive">
+                            {summary.employeeNIC > 0 ? `-£${summary.employeeNIC.toFixed(2)}` : '—'}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-medium text-primary">
+                            £{summary.netPay.toFixed(2)}
                            </TableCell>
                            <TableCell className="text-right font-mono">
                              {summary.holidayAccrual > 0 ? (
@@ -291,17 +321,20 @@
                      <TableCell className="text-right font-mono">
                        {totals.hours.toFixed(2)}
                      </TableCell>
-                      <TableCell className="text-right font-mono text-primary">
-                        {totals.overtimeHours.toFixed(2)}
-                      </TableCell>
-                     <TableCell />
-                     <TableCell />
-                      <TableCell className="text-right font-mono text-primary">
-                        £{totals.overtimePay.toFixed(2)}
-                      </TableCell>
                      <TableCell className="text-right font-mono">
                        £{totals.grossPay.toFixed(2)}
                      </TableCell>
+                    <TableCell />
+                    <TableCell className="text-right font-mono text-destructive">
+                      -£{totals.incomeTax.toFixed(2)}
+                    </TableCell>
+                    <TableCell />
+                    <TableCell className="text-right font-mono text-destructive">
+                      -£{totals.employeeNIC.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold text-primary">
+                      £{totals.netPay.toFixed(2)}
+                    </TableCell>
                      <TableCell className="text-right font-mono">
                        £{totals.holidayAccrual.toFixed(2)}
                      </TableCell>

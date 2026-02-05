@@ -60,6 +60,12 @@
    grossPay: number;
   overtimePay: number;
    holidayAccrual: number; // 12.07% for zero-hour contracts
+  // Tax & NIC deductions
+  taxCode: string;
+  nicCategory: string;
+  incomeTax: number;      // PAYE income tax
+  employeeNIC: number;    // Employee National Insurance
+  netPay: number;         // Take-home pay after deductions
  }
  
  // UK Compliance types
