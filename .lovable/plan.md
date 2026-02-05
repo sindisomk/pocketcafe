@@ -1,320 +1,308 @@
 
 
-## Header & Sidebar Enhancement Implementation Plan
+## Comprehensive Fix Plan: Late Arrivals, Budget Integration & Reports Enhancement
 
-This plan adds user information display, restaurant name, dark/light mode toggle, and today's date to create a professional, information-rich header and sidebar.
-
----
-
-## Overview
-
-### Current State
-- **Sidebar Footer**: Only shows Sign Out button, no user information
-- **Header**: Only has SidebarTrigger and NotificationBell
-- **Dark Mode**: CSS variables exist in `index.css` but no toggle UI
-- **Restaurant Settings**: Stored locally in component state, not persisted to database
-
-### Target State
-- **Sidebar Footer**: Shows user email/name above Sign Out
-- **Header**: Restaurant name, date, dark/light toggle, notification bell (professional layout)
-- **Dark Mode**: Fully functional toggle with persistence
-- **Settings**: Restaurant details persisted to `app_settings` table
+This plan addresses three key issues:
+1. Late arrivals not being tracked when staff clock in via Manager Override
+2. Budget settings not persisted to database, and not used in Payroll/Reports
+3. Reports need multiple time period views and leave balance integration
 
 ---
 
-## Part 1: Restaurant Settings Persistence
+## Issue 1: Late Arrivals Not Detected
 
-### 1.1 Create useOutletSettings Hook
+### Root Cause Analysis
 
-**New File: `src/hooks/useOutletSettings.ts`**
-
-Follow the same pattern as `useWorkHoursSettings`:
+When staff clock in via **face recognition quick action**, the code correctly passes the scheduled shift time:
 
 ```typescript
-export interface OutletSettings {
-  name: string;
-  address: string;
-  postcode: string;
-  phone: string;
-  email: string;
-  companyNumber: string;
-  vatNumber: string;
+// In Kiosk.tsx handleQuickAction - CORRECT
+await clockIn.mutateAsync({
+  staffId,
+  faceConfidence: confidence,
+  scheduledStartTime: todayShift?.start_time,  // Passed correctly
+  shiftDate: today,
+  graceMinutes: settings.latenessGraceMinutes,
+});
+```
+
+However, when staff clock in via **Manager Override** (ClockActionModal), no shift information is passed:
+
+```typescript
+// In ClockActionModal.tsx - MISSING shift data
+await clockIn.mutateAsync({
+  staffId,
+  faceConfidence,
+  overrideBy: isManagerOverride ? overrideManagerId : undefined,
+  overridePinUsed: isManagerOverride,
+  // scheduledStartTime: MISSING
+  // shiftDate: MISSING
+});
+```
+
+**Database Evidence**: All 3 attendance records from today have `scheduled_start_time: nil` and `is_late: false`, even though they clocked in at 10:20, 10:28, and 10:43 for 08:00 morning shifts.
+
+### Solution
+
+**Modify `ClockActionModal.tsx`** to:
+1. Accept the staff's scheduled shift information as props
+2. Pass this to the `clockIn` mutation
+
+**Modify `Kiosk.tsx`** to:
+1. Pass the current shift data to `ClockActionModal`
+2. Include grace minutes from settings
+
+---
+
+## Issue 2: Budget Settings Not Persisted
+
+### Root Cause
+
+`DepartmentBudgetSettings.tsx` uses local `useState` - values are lost on page refresh:
+
+```typescript
+const [budgets, setBudgets] = useState<DepartmentBudget>({
+  kitchen: 5000,
+  floor: 6000,
+  management: 3000,
+});
+```
+
+### Solution
+
+**Create `useBudgetSettings.ts` hook** following the same pattern as `useOutletSettings`:
+- Store in `app_settings` table with key `department_budgets`
+- Add `bar` department (currently missing in budget UI but exists in staff roles)
+
+**Update `DepartmentBudgetSettings.tsx`** to use the new hook.
+
+---
+
+## Issue 3: Reports Enhancements
+
+### Current State
+- Only shows monthly data
+- No budget comparison
+- No leave balance trends
+- No time period switching (week/month/quarter/year)
+
+### Solution
+
+**Part A: Time Period Selector**
+Add a period selector (Week, Month, Quarter, Year) that adjusts:
+- Date range calculations
+- Chart granularity (days for week, weeks for month, months for quarter/year)
+
+**Part B: Budget vs Actual Cards**
+- Add summary cards showing Actual Spend vs Budget by department
+- Color-coded progress bars (green = under budget, red = over budget)
+- Show total budget utilization percentage
+
+**Part C: Leave Balance Tab**
+Add a new "Leave Balances" tab with:
+- Bar chart showing each staff member's leave balance (used vs available)
+- Summary of total accrued hours across all staff
+- Highlight staff with low remaining balances
+
+---
+
+## Implementation Details
+
+### Part 1: Fix ClockActionModal Late Tracking
+
+**File: `src/components/kiosk/ClockActionModal.tsx`**
+
+Add new props:
+```typescript
+interface ClockActionModalProps {
+  // ... existing props
+  scheduledStartTime?: string;
+  shiftDate?: string;
+  graceMinutes?: number;
+}
+```
+
+Update clock_in action:
+```typescript
+case 'clock_in':
+  await clockIn.mutateAsync({
+    staffId,
+    faceConfidence,
+    overrideBy: isManagerOverride ? overrideManagerId : undefined,
+    overridePinUsed: isManagerOverride,
+    scheduledStartTime,   // New
+    shiftDate,            // New
+    graceMinutes,         // New
+  });
+  break;
+```
+
+**File: `src/pages/Kiosk.tsx`**
+
+Pass shift data to modal:
+```typescript
+<ClockActionModal
+  // ... existing props
+  scheduledStartTime={shifts.find(s => s.staff_id === selectedStaff?.id)?.start_time}
+  shiftDate={today}
+  graceMinutes={settings.latenessGraceMinutes}
+/>
+```
+
+---
+
+### Part 2: Budget Settings Persistence
+
+**New File: `src/hooks/useBudgetSettings.ts`**
+
+```typescript
+export interface BudgetSettings {
+  kitchen: number;
+  floor: number;
+  bar: number;
+  management: number;
 }
 
-const DEFAULT_OUTLET: OutletSettings = {
-  name: 'PocketCafe',
-  address: '',
-  postcode: '',
-  phone: '',
-  email: '',
-  companyNumber: '',
-  vatNumber: '',
+const DEFAULT_BUDGETS: BudgetSettings = {
+  kitchen: 5000,
+  floor: 6000,
+  bar: 4000,
+  management: 3000,
 };
 
-export function useOutletSettings() {
-  // Query from app_settings where setting_key = 'outlet'
+export function useBudgetSettings() {
+  // Query from app_settings where setting_key = 'department_budgets'
   // Return settings, isLoading, updateSettings
 }
 ```
 
-### 1.2 Update RestaurantOutletSettings Component
+**File: `src/components/settings/DepartmentBudgetSettings.tsx`**
 
-Connect to database instead of local state:
-
+Replace local state with hook:
 ```typescript
-// Replace useState with:
-const { settings, isLoading, updateSettings } = useOutletSettings();
+const { settings: budgets, updateSettings, isLoading } = useBudgetSettings();
+
+// Add Bar department to the UI
+// Update handleSave to call updateSettings.mutateAsync()
 ```
 
 ---
 
-## Part 2: Dark/Light Mode Toggle
+### Part 3: Reports Enhancements
 
-### 2.1 Add ThemeProvider to App.tsx
+**File: `src/pages/Reports.tsx`**
 
-Wrap the app with `next-themes` ThemeProvider:
-
+**A. Add Period Type State:**
 ```typescript
-import { ThemeProvider } from 'next-themes';
-
-// In App component render:
-<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-  <QueryClientProvider client={queryClient}>
-    {/* ... existing providers */}
-  </QueryClientProvider>
-</ThemeProvider>
+type PeriodType = 'week' | 'month' | 'quarter' | 'year';
+const [periodType, setPeriodType] = useState<PeriodType>('month');
 ```
 
-### 2.2 Create ThemeToggle Component
-
-**New File: `src/components/layout/ThemeToggle.tsx`**
-
+**B. Dynamic Date Range Calculation:**
 ```typescript
-import { Moon, Sun } from 'lucide-react';
-import { useTheme } from 'next-themes';
-import { Button } from '@/components/ui/button';
-
-export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
-  
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-      className="h-9 w-9"
-    >
-      <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-      <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-      <span className="sr-only">Toggle theme</span>
-    </Button>
-  );
-}
+const { start, end } = useMemo(() => {
+  switch (periodType) {
+    case 'week':
+      return { start: startOfWeek(...), end: endOfWeek(...) };
+    case 'month':
+      return { start: startOfMonth(...), end: endOfMonth(...) };
+    case 'quarter':
+      return { start: startOfQuarter(...), end: endOfQuarter(...) };
+    case 'year':
+      return { start: startOfYear(...), end: endOfYear(...) };
+  }
+}, [periodType, offset]);
 ```
 
----
-
-## Part 3: User Display in Sidebar
-
-### 3.1 Update AppSidebar Footer
-
-Add user info section above Sign Out:
-
+**C. Budget vs Actual Summary Cards:**
 ```typescript
-<SidebarFooter className="p-4 border-t border-sidebar-border">
-  {user && (
-    <div className="space-y-3">
-      {/* User info */}
-      {!collapsed && (
-        <div className="flex items-center gap-3 px-2">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-sidebar-accent text-sidebar-foreground text-xs">
-              {getUserInitials(user.email)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">
-              {user.user_metadata?.full_name || user.email?.split('@')[0]}
-            </p>
-            <p className="text-xs text-sidebar-foreground/60 truncate">
-              {user.email}
-            </p>
-          </div>
-        </div>
-      )}
-      
-      {/* Sign Out Button */}
-      <Button
-        variant="ghost"
-        size={collapsed ? "icon" : "default"}
-        onClick={handleSignOut}
-        className="w-full ..."
-      >
-        <LogOut className="h-5 w-5" />
-        {!collapsed && <span>Sign Out</span>}
-      </Button>
-    </div>
-  )}
-</SidebarFooter>
+const budgetComparison = useMemo(() => {
+  return Object.entries(budgets).map(([dept, budget]) => {
+    const actual = laborCostsByDepartment.find(d => d.key === dept)?.cost ?? 0;
+    const percentUsed = (actual / budget) * 100;
+    return { dept, budget, actual, percentUsed, overBudget: actual > budget };
+  });
+}, [budgets, laborCostsByDepartment]);
 ```
 
-Helper function:
+**D. Add Leave Balances Tab:**
 ```typescript
-const getUserInitials = (email?: string) => {
-  if (!email) return '?';
-  return email.substring(0, 2).toUpperCase();
-};
+<TabsTrigger value="leave-balances">Leave Balances</TabsTrigger>
+
+<TabsContent value="leave-balances">
+  <Card>
+    <CardHeader>
+      <CardTitle>Staff Leave Balances</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <BarChart data={leaveBalanceData}>
+        <Bar dataKey="used" name="Used" stackId="a" fill="hsl(var(--chart-2))" />
+        <Bar dataKey="available" name="Available" stackId="a" fill="hsl(var(--primary))" />
+      </BarChart>
+    </CardContent>
+  </Card>
+</TabsContent>
 ```
 
 ---
 
-## Part 4: Enhanced Header Layout
-
-### 4.1 Update ProtectedLayout Header
-
-Create a professional header with all elements:
-
-```typescript
-<header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur px-4 md:px-6">
-  {/* Left: Sidebar trigger */}
-  <SidebarTrigger className="hidden md:flex" />
-  
-  {/* Center: Restaurant name (from settings) */}
-  <div className="hidden sm:flex items-center gap-2">
-    <Store className="h-4 w-4 text-muted-foreground" />
-    <span className="font-semibold text-foreground">
-      {outletSettings?.name || 'PocketCafe'}
-    </span>
-  </div>
-  
-  {/* Spacer */}
-  <div className="flex-1" />
-  
-  {/* Right section: Date, Theme Toggle, Notifications */}
-  <div className="flex items-center gap-2">
-    {/* Today's date */}
-    <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
-      <CalendarDays className="h-4 w-4" />
-      <span>{format(new Date(), 'EEEE, d MMM yyyy')}</span>
-    </div>
-    
-    {/* Separator */}
-    <Separator orientation="vertical" className="hidden md:block h-6 mx-2" />
-    
-    {/* Theme toggle */}
-    <ThemeToggle />
-    
-    {/* Notifications */}
-    <NotificationBell />
-  </div>
-</header>
-```
-
-### 4.2 Mobile Responsive Considerations
-
-- Restaurant name: Hidden on mobile (`hidden sm:flex`)
-- Date: Hidden on mobile (`hidden md:flex`)
-- Theme toggle & notifications: Always visible
-- Mobile shows only essential controls
-
----
-
-## Implementation Summary
+## Files Summary
 
 ### New Files
 | File | Purpose |
 |------|---------|
-| `src/hooks/useOutletSettings.ts` | Persist restaurant details to database |
-| `src/components/layout/ThemeToggle.tsx` | Dark/light mode toggle button |
+| `src/hooks/useBudgetSettings.ts` | Persist department budgets to database |
 
 ### Modified Files
 | File | Changes |
 |------|---------|
-| `src/App.tsx` | Add `ThemeProvider` wrapper |
-| `src/components/layout/AppSidebar.tsx` | Add user avatar + email above Sign Out |
-| `src/components/layout/ProtectedLayout.tsx` | Enhanced header with restaurant name, date, theme toggle |
-| `src/components/settings/RestaurantOutletSettings.tsx` | Connect to database via hook |
+| `src/components/kiosk/ClockActionModal.tsx` | Accept and pass shift data for lateness calculation |
+| `src/pages/Kiosk.tsx` | Pass shift info to ClockActionModal |
+| `src/components/settings/DepartmentBudgetSettings.tsx` | Use database hook instead of local state, add Bar department |
+| `src/pages/Reports.tsx` | Add period selector, budget comparison, leave balances tab |
+| `src/pages/Payroll.tsx` | Add budget vs actual progress indicator to summary cards |
 
 ---
 
-## Visual Layout
-
-### Header (Desktop)
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│ [≡]  🏪 PocketCafe London              Wed, 5 Feb 2026  │ ☀ 🔔  │
-└─────────────────────────────────────────────────────────────────────┘
-       ↑                                       ↑           ↑   ↑
-  Trigger   Restaurant Name                  Date      Theme Bell
-```
-
-### Header (Mobile)
-```text
-┌─────────────────────────────────────────┐
-│                            ☀ 🔔         │
-└─────────────────────────────────────────┘
-                             Theme Bell
-```
-
-### Sidebar Footer (Expanded)
-```text
-┌─────────────────────────────┐
-│  [JD]  John Doe             │
-│        john@cafe.com        │
-│                             │
-│  [↩] Sign Out               │
-└─────────────────────────────┘
-```
-
-### Sidebar Footer (Collapsed)
-```text
-┌─────────┐
-│  [↩]    │
-└─────────┘
-```
-
----
-
-## Data Flow
+## Data Flow Diagram
 
 ```text
-User logs in → useAuth() provides user object
-                       ↓
-AppSidebar reads user.email, user.user_metadata.full_name
-                       ↓
-ProtectedLayout calls useOutletSettings()
-                       ↓
-Header displays: Restaurant Name | Date | Theme | Notifications
-                       ↓
-ThemeToggle reads/writes via next-themes (localStorage)
-```
-
----
-
-## Database Changes
-
-No schema changes needed - reuse existing `app_settings` table:
-
-```typescript
-// New setting key for outlet details
-setting_key: 'outlet'
-setting_value: {
-  name: 'PocketCafe London',
-  address: '123 High Street...',
-  // etc.
-}
+Settings Page
+     │
+     ▼
+┌─────────────────┐
+│ useBudgetSettings│ ──────► app_settings table
+└─────────────────┘          (key: 'department_budgets')
+     │
+     ▼
+┌─────────────────┐
+│ Reports Page    │◄──── Labor costs from attendance
+│                 │◄──── Leave balances from leave_balances
+│                 │◄──── Budgets from useBudgetSettings
+└─────────────────┘
+     │
+     ▼
+Budget vs Actual charts with % indicators
 ```
 
 ---
 
 ## Testing Checklist
-- [ ] User email/name displays in sidebar footer
-- [ ] User initials show in avatar
-- [ ] Collapsed sidebar hides user info, shows only sign out icon
-- [ ] Restaurant name displays in header
-- [ ] Restaurant name updates when changed in settings
-- [ ] Today's date shows correctly formatted
-- [ ] Theme toggle switches between light and dark
-- [ ] Theme persists after page refresh
-- [ ] Mobile view hides restaurant name and date
-- [ ] All elements align professionally
+
+### Late Arrivals Fix
+- [ ] Clock in via Manager Override for a scheduled shift
+- [ ] Verify `is_late` and `late_minutes` are populated in database
+- [ ] Verify late badge appears on Attendance page
+- [ ] Verify manager notification is sent for late arrival
+
+### Budget Persistence
+- [ ] Change budget values in Settings
+- [ ] Refresh page - values should persist
+- [ ] Verify budgets display in Reports
+
+### Reports Enhancements
+- [ ] Switch between Week/Month/Quarter/Year views
+- [ ] Verify charts update with correct data granularity
+- [ ] Verify budget vs actual comparison displays
+- [ ] Verify Leave Balances tab shows all staff
+
