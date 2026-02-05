@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { queryKeys } from '@/lib/queryKeys';
 import { calculateLateness } from '@/lib/attendance';
+import { notifyManagers } from '@/hooks/useNotifications';
 
 interface ClockInParams {
   staffId: string;
@@ -85,8 +86,29 @@ interface ClockInParams {
         .select()
         .single();
 
-      if (error) throw error;
-      return data;
+       if (error) throw error;
+       
+       // If late, notify managers
+       if (isLate) {
+         // Get staff name for notification
+         const { data: staffData } = await supabase
+           .from('staff_profiles')
+           .select('name')
+           .eq('id', staffId)
+           .single();
+         
+         const staffName = staffData?.name || 'Staff member';
+         
+         notifyManagers(
+           'late_arrival',
+           `${staffName} clocked in late`,
+           `${lateMinutes} minutes late for their shift`,
+           staffId,
+           data.id
+         );
+       }
+       
+       return data;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.attendance(dateStr) });

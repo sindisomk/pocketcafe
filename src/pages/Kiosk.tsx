@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Coffee, KeyRound, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { TodayRoster } from '@/components/kiosk/TodayRoster';
 import { ClockActionModal } from '@/components/kiosk/ClockActionModal';
 import { ManagerPinPad } from '@/components/kiosk/ManagerPinPad';
 import { StaffSelectModal } from '@/components/kiosk/StaffSelectModal';
+import { SleepOverlay } from '@/components/kiosk/SleepOverlay';
 import { useAttendance } from '@/hooks/useAttendance';
 import { useNoShowDetection } from '@/hooks/useNoShowDetection';
 import { useWorkHoursSettings } from '@/hooks/useAppSettings';
@@ -17,6 +18,9 @@ import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { ShiftWithStaff } from '@/types/schedule';
+
+// Sleep mode timeout: 5 minutes of inactivity
+const SLEEP_TIMEOUT_MS = 5 * 60 * 1000;
  
 export default function Kiosk() {
   const navigate = useNavigate();
@@ -34,13 +38,17 @@ export default function Kiosk() {
   const [detectedStaffId, setDetectedStaffId] = useState<string | null>(null);
   const [detectedConfidence, setDetectedConfidence] = useState<number | null>(null);
   const [managerOverrideId, setManagerOverrideId] = useState<string | null>(null);
+  
+  // Sleep mode state
+  const [isSleeping, setIsSleeping] = useState(false);
+  const sleepTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const { getActiveRecord, attendance, clockIn, startBreak, endBreak, clockOut, refetch } = useAttendance();
   const { settings } = useWorkHoursSettings();
   
   // Enable no-show detection in the background
   useNoShowDetection({ 
-    enabled: true, 
+    enabled: !isSleeping, // Disable during sleep to reduce queries
     thresholdMinutes: settings.noShowThresholdMinutes 
   });
 
@@ -49,6 +57,7 @@ export default function Kiosk() {
   // Fetch today's shifts for lateness calculation
   const { data: shifts = [] } = useQuery({
     queryKey: queryKeys.shiftsToday(today),
+    enabled: !isSleeping, // Disable during sleep
     queryFn: async () => {
       const { data, error } = await supabase
         .from('shifts')
@@ -68,6 +77,34 @@ export default function Kiosk() {
       return data as ShiftWithStaff[];
     },
   });
+
+  // Sleep mode: reset timer on any interaction
+  const resetSleepTimer = useCallback(() => {
+    if (sleepTimerRef.current) {
+      clearTimeout(sleepTimerRef.current);
+    }
+    setIsSleeping(false);
+    sleepTimerRef.current = setTimeout(() => {
+      setIsSleeping(true);
+    }, SLEEP_TIMEOUT_MS);
+  }, []);
+
+  // Set up sleep timer and event listeners
+  useEffect(() => {
+    const events = ['mousedown', 'touchstart', 'keydown', 'mousemove'];
+    
+    events.forEach(event => document.addEventListener(event, resetSleepTimer));
+    
+    // Start initial timer
+    resetSleepTimer();
+    
+    return () => {
+      events.forEach(event => document.removeEventListener(event, resetSleepTimer));
+      if (sleepTimerRef.current) {
+        clearTimeout(sleepTimerRef.current);
+      }
+    };
+  }, [resetSleepTimer]);
  
    // Update time every second
    useEffect(() => {
@@ -200,8 +237,11 @@ export default function Kiosk() {
   };
  
    return (
-     <div className="min-h-screen bg-sidebar text-sidebar-foreground">
-       {/* Header */}
+    <div className="min-h-screen bg-sidebar text-sidebar-foreground">
+      {/* Sleep mode overlay */}
+      {isSleeping && <SleepOverlay onWake={resetSleepTimer} />}
+      
+      {/* Header */}
        <header className="fixed top-0 left-0 right-0 z-50 bg-sidebar-background border-b border-sidebar-border px-6 py-4">
          <div className="flex items-center justify-between">
            <div className="flex items-center gap-3">
@@ -250,28 +290,35 @@ export default function Kiosk() {
          </div>
        </header>
  
-       {/* Main content */}
-       <main className="pt-24 h-screen flex">
-         {/* Left panel - Camera (60%) */}
-         <div className="w-[60%] p-6 pr-3">
-           <div className="h-full rounded-2xl overflow-hidden border border-sidebar-border">
-             <CameraFeed 
-               onFaceDetected={handleFaceDetected}
-               isProcessing={isProcessing}
-               staffName={detectedStaffName}
-                detectedStaffId={detectedStaffId}
-                detectedConfidence={detectedConfidence}
-                activeRecord={activeRecord}
-                onQuickAction={handleQuickAction}
-             />
-           </div>
-         </div>
- 
-         {/* Right panel - Roster (40%) */}
-         <div className="w-[40%] p-6 pl-3">
-           <TodayRoster />
-         </div>
-       </main>
+        {/* Main content */}
+        <main className="pt-24 h-screen flex">
+          {/* Left panel - Camera (60%) - only render when awake */}
+          <div className="w-[60%] p-6 pr-3">
+            <div className="h-full rounded-2xl overflow-hidden border border-sidebar-border">
+              {!isSleeping && (
+                <CameraFeed 
+                  onFaceDetected={handleFaceDetected}
+                  isProcessing={isProcessing}
+                  staffName={detectedStaffName}
+                  detectedStaffId={detectedStaffId}
+                  detectedConfidence={detectedConfidence}
+                  activeRecord={activeRecord}
+                  onQuickAction={handleQuickAction}
+                />
+              )}
+              {isSleeping && (
+                <div className="w-full h-full flex items-center justify-center bg-sidebar">
+                  <p className="text-sidebar-foreground/50">Camera paused</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right panel - Roster (40%) */}
+          <div className="w-[40%] p-6 pl-3">
+            <TodayRoster />
+          </div>
+        </main>
  
        {/* Modals */}
        <ManagerPinPad

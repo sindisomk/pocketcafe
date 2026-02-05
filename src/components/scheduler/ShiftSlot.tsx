@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { X, AlertTriangle } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -14,20 +15,33 @@ interface ShiftSlotProps {
   isLoading?: boolean;
 }
 
-export function ShiftSlot({
-  date,
-  shiftType,
-  shifts,
-  hasRestWarning,
-  onRemoveShift,
-  isLoading,
-}: ShiftSlotProps) {
+export const ShiftSlot = forwardRef<HTMLDivElement, ShiftSlotProps>(function ShiftSlot(
+  {
+    date,
+    shiftType,
+    shifts,
+    hasRestWarning,
+    onRemoveShift,
+    isLoading,
+  },
+  externalRef
+) {
   const slotId = `${date.toISOString()}-${shiftType}`;
   
   const { setNodeRef, isOver } = useDroppable({
     id: slotId,
     data: { date, shiftType },
   });
+
+  // Combine refs for dnd-kit and any external ref
+  const combinedRef = (node: HTMLDivElement | null) => {
+    setNodeRef(node);
+    if (typeof externalRef === 'function') {
+      externalRef(node);
+    } else if (externalRef) {
+      externalRef.current = node;
+    }
+  };
 
   // Calculate shift hours
   const shiftHours = shiftType === 'morning' 
@@ -41,7 +55,7 @@ export function ShiftSlot({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={combinedRef}
       className={cn(
         'min-h-[120px] p-2 border border-dashed rounded-lg transition-all',
         'flex flex-col gap-2',
@@ -119,4 +133,4 @@ export function ShiftSlot({
       )}
     </div>
   );
-}
+});

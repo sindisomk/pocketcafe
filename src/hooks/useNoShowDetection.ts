@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { isNoShow } from '@/lib/attendance';
 import { format } from 'date-fns';
+import { notifyManagers } from '@/hooks/useNotifications';
 
 const NO_SHOW_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
@@ -71,19 +72,40 @@ export function useNoShowDetection(options: UseNoShowDetectionOptions = {}) {
 
           if (!existing) {
             // Create no-show record
-            const { error: insertError } = await supabase
+            const { data: noShowData, error: insertError } = await supabase
               .from('no_show_records')
               .insert({
                 staff_id: shift.staff_id,
                 shift_id: shift.id,
                 shift_date: shift.shift_date,
                 scheduled_start_time: shift.start_time,
-              });
+              })
+              .select()
+              .single();
 
             if (insertError) {
               console.error('[NoShowDetection] Failed to create no-show record:', insertError);
             } else {
               console.log('[NoShowDetection] Created no-show record for shift:', shift.id);
+              
+              // Get staff name for notification
+              const { data: staffData } = await supabase
+                .from('staff_profiles')
+                .select('name')
+                .eq('id', shift.staff_id)
+                .single();
+              
+              const staffName = staffData?.name || 'Staff member';
+              
+              // Notify managers about no-show
+              notifyManagers(
+                'no_show',
+                `${staffName} is a no-show`,
+                `Scheduled at ${shift.start_time} but hasn't clocked in`,
+                shift.staff_id,
+                noShowData?.id
+              );
+              
               // Invalidate no-shows query
               queryClient.invalidateQueries({ 
                 predicate: (query) => {

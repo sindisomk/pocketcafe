@@ -1,5 +1,5 @@
- import { useState } from 'react';
- import { User, Pencil, Scan, CheckCircle } from 'lucide-react';
+import { useState } from 'react';
+import { User, Pencil, Scan, CheckCircle, Calendar } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -13,15 +13,17 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Progress } from '@/components/ui/progress';
 import { StaffProfile } from '@/types/staff';
 import { useAuth } from '@/hooks/useAuth';
 import { useStaff } from '@/hooks/useStaff';
+import { useLeaveBalance } from '@/hooks/useLeaveBalance';
 import { cn } from '@/lib/utils';
- import { FaceEnrollmentDialog } from './FaceEnrollmentDialog';
- 
- interface StaffWithFaceToken extends StaffProfile {
-   face_token?: string | null;
- }
+import { FaceEnrollmentDialog } from './FaceEnrollmentDialog';
+
+interface StaffWithFaceToken extends StaffProfile {
+  face_token?: string | null;
+}
 
 interface StaffDetailSheetProps {
   staff: StaffProfile | null;
@@ -45,7 +47,10 @@ const roleLabels: Record<string, string> = {
 export function StaffDetailSheet({ staff, open, onOpenChange, onEdit }: StaffDetailSheetProps) {
   const { isAdmin } = useAuth();
   const { updateStaff } = useStaff();
-   const [showEnrollment, setShowEnrollment] = useState(false);
+  const [showEnrollment, setShowEnrollment] = useState(false);
+  
+  // Get leave balance for this staff member
+  const { balance, availableHours, isLoading: balanceLoading } = useLeaveBalance(staff?.id);
 
   if (!staff) return null;
  
@@ -145,6 +150,60 @@ export function StaffDetailSheet({ staff, open, onOpenChange, onEdit }: StaffDet
                 />
               )}
             </div>
+          </div>
+
+          <Separator />
+
+          {/* Leave Balance Section */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Leave Balance ({new Date().getFullYear()})
+            </Label>
+            {balanceLoading ? (
+              <div className="p-4 rounded-lg border bg-muted/30">
+                <p className="text-sm text-muted-foreground">Loading...</p>
+              </div>
+            ) : balance ? (
+              <div className="p-4 rounded-lg border bg-muted/30 space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Available</span>
+                  <span className="font-medium">{availableHours.toFixed(1)} hours</span>
+                </div>
+                <Progress 
+                  value={balance.total_entitlement_hours + balance.accrued_hours > 0 
+                    ? (balance.used_hours / (balance.total_entitlement_hours + balance.accrued_hours)) * 100 
+                    : 0
+                  } 
+                  className="h-2" 
+                />
+                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                  <div>
+                    <span className="block text-foreground font-medium">
+                      {balance.used_hours.toFixed(1)}h
+                    </span>
+                    Used
+                  </div>
+                  <div className="text-right">
+                    <span className="block text-foreground font-medium">
+                      {(balance.total_entitlement_hours + balance.accrued_hours).toFixed(1)}h
+                    </span>
+                    {isSalaried ? 'Entitlement' : 'Accrued (12.07%)'}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 rounded-lg border bg-muted/30">
+                <p className="text-sm text-muted-foreground">
+                  No leave balance record
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {isSalaried 
+                    ? 'Standard entitlement: 28 days (224 hours)' 
+                    : 'Accrues at 12.07% of hours worked'}
+                </p>
+              </div>
+            )}
           </div>
 
           {isAdmin && (

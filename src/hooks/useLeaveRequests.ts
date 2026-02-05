@@ -1,8 +1,9 @@
- import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
- import { supabase } from '@/integrations/supabase/client';
- import { LeaveRequest, LeaveRequestWithStaff, LeaveStatus } from '@/types/attendance';
- import { toast } from 'sonner';
- import { queryKeys } from '@/lib/queryKeys';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { LeaveRequest, LeaveRequestWithStaff, LeaveStatus } from '@/types/attendance';
+import { toast } from 'sonner';
+import { queryKeys } from '@/lib/queryKeys';
+import { notifyManagers } from '@/hooks/useNotifications';
  
  export function useLeaveRequests() {
    const queryClient = useQueryClient();
@@ -45,17 +46,36 @@
          .select()
          .single();
  
-       if (error) throw error;
-       return data;
-     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.leaveRequests });
-      toast.success('Leave request submitted');
-     },
-     onError: (error) => {
-       toast.error(`Failed to submit leave request: ${error.message}`);
-     },
-   });
+        if (error) throw error;
+        
+        // Get staff name for notification
+        const { data: staffData } = await supabase
+          .from('staff_profiles')
+          .select('name')
+          .eq('id', request.staffId)
+          .single();
+        
+        const staffName = staffData?.name || 'Staff member';
+        
+        // Notify managers about new leave request
+        notifyManagers(
+          'leave_request',
+          `${staffName} submitted a leave request`,
+          `${request.startDate} to ${request.endDate}`,
+          request.staffId,
+          data.id
+        );
+        
+        return data;
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.leaveRequests });
+        toast.success('Leave request submitted');
+      },
+      onError: (error) => {
+        toast.error(`Failed to submit leave request: ${error.message}`);
+      },
+    });
  
    const updateLeaveStatus = useMutation({
      mutationFn: async ({

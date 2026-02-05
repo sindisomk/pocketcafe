@@ -123,6 +123,37 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
         {
           event: '*',
           schema: 'public',
+          table: 'leave_balances',
+        },
+        (payload) => {
+          console.log('[Realtime] leave_balances change:', payload.eventType);
+          setLastSync(new Date());
+          queryClient.invalidateQueries({ 
+            predicate: (query) => {
+              const key = query.queryKey;
+              return Array.isArray(key) && key[0] === 'leave-balance';
+            }
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+        },
+        (payload) => {
+          console.log('[Realtime] notifications change:', payload.eventType);
+          setLastSync(new Date());
+          queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
           table: 'app_settings',
         },
         (payload) => {

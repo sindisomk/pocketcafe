@@ -1,21 +1,24 @@
- import { useState } from 'react';
- import { format, differenceInDays } from 'date-fns';
- import { CalendarDays, AlertTriangle, Check, X, Loader2, Plus } from 'lucide-react';
- import { AppLayout } from '@/components/layout/AppLayout';
- import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
- import { Button } from '@/components/ui/button';
- import { Badge } from '@/components/ui/badge';
- import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
- import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
- import { useLeaveRequests } from '@/hooks/useLeaveRequests';
- import { useAuth } from '@/hooks/useAuth';
- import { LeaveRequestDialog } from '@/components/leave/LeaveRequestDialog';
- import { LeaveConflictBadge } from '@/components/leave/LeaveConflictBadge';
- 
- export default function Leave() {
-   const { leaveRequests, isLoading, updateLeaveStatus, getConflicts } = useLeaveRequests();
-   const { isAdmin, isManager } = useAuth();
-   const [showRequestDialog, setShowRequestDialog] = useState(false);
+import { useState } from 'react';
+import { format, differenceInDays } from 'date-fns';
+import { CalendarDays, AlertTriangle, Check, X, Loader2, Plus, Clock } from 'lucide-react';
+import { AppLayout } from '@/components/layout/AppLayout';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Progress } from '@/components/ui/progress';
+import { useLeaveRequests } from '@/hooks/useLeaveRequests';
+import { useAllLeaveBalances } from '@/hooks/useLeaveBalance';
+import { useAuth } from '@/hooks/useAuth';
+import { LeaveRequestDialog } from '@/components/leave/LeaveRequestDialog';
+import { LeaveConflictBadge } from '@/components/leave/LeaveConflictBadge';
+
+export default function Leave() {
+  const { leaveRequests, isLoading, updateLeaveStatus, getConflicts } = useLeaveRequests();
+  const { data: leaveBalances, isLoading: balancesLoading } = useAllLeaveBalances();
+  const { isAdmin, isManager } = useAuth();
+  const [showRequestDialog, setShowRequestDialog] = useState(false);
  
    const pendingRequests = leaveRequests.filter((r) => r.status === 'pending');
    const approvedRequests = leaveRequests.filter((r) => r.status === 'approved');
@@ -109,24 +112,69 @@
      );
    };
  
-   return (
-     <AppLayout>
-       <div className="space-y-6">
-         <div className="flex items-center justify-between">
-           <div>
-             <h1 className="text-2xl font-bold text-foreground">Leave Requests</h1>
-             <p className="text-sm text-muted-foreground mt-1">
-               Manage staff holiday and absence requests
-             </p>
-           </div>
- 
-           <Button onClick={() => setShowRequestDialog(true)}>
-             <Plus className="h-4 w-4 mr-2" />
-             New Request
-           </Button>
-         </div>
- 
-         <Tabs defaultValue="pending">
+  return (
+    <AppLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Leave Requests</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage staff holiday and absence requests
+            </p>
+          </div>
+
+          <Button onClick={() => setShowRequestDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Request
+          </Button>
+        </div>
+
+        {/* Leave Balances Summary */}
+        {(isAdmin || isManager) && leaveBalances && leaveBalances.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Clock className="h-5 w-5" />
+                Staff Leave Balances
+              </CardTitle>
+              <CardDescription>
+                Overview of remaining leave hours for the year
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {leaveBalances.slice(0, 6).map((balance: any) => {
+                  const total = balance.total_entitlement_hours + balance.accrued_hours;
+                  const available = total - balance.used_hours;
+                  const usedPercent = total > 0 ? (balance.used_hours / total) * 100 : 0;
+                  
+                  return (
+                    <div key={balance.id} className="p-3 rounded-lg border bg-muted/30">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={balance.staff_profiles?.profile_photo_url ?? undefined} />
+                          <AvatarFallback className="text-[10px]">
+                            {balance.staff_profiles?.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm font-medium truncate">
+                          {balance.staff_profiles?.name}
+                        </span>
+                      </div>
+                      <Progress value={usedPercent} className="h-2 mb-1" />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{available.toFixed(1)}h remaining</span>
+                        <span>{balance.used_hours.toFixed(1)}h used</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Tabs defaultValue="pending">
            <TabsList>
              <TabsTrigger value="pending" className="gap-2">
                Pending
