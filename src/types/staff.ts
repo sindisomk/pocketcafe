@@ -81,7 +81,11 @@ export interface StaffProfile {
   nic_category: string | null;
   created_at: string;
   updated_at: string;
-}
+ }
+ 
+ export interface StaffProfileWithEnrollment extends StaffProfile {
+   face_token?: string | null;
+ }
 
 export interface StaffProfilePublic {
   id: string;

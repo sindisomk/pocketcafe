@@ -1,4 +1,4 @@
- import { Suspense, useState, useEffect, useRef } from 'react';
+ import { Suspense, useState, useEffect, useRef, useCallback } from 'react';
  import { Camera, CameraOff, Loader2, User } from 'lucide-react';
  import { Card, CardContent } from '@/components/ui/card';
  import { Button } from '@/components/ui/button';
@@ -7,13 +7,18 @@
  interface CameraFeedProps {
    onFaceDetected: (staffId: string, confidence: number) => void;
    isProcessing: boolean;
+   staffName?: string | null;
  }
  
- function CameraFeedContent({ onFaceDetected, isProcessing }: CameraFeedProps) {
+ function CameraFeedContent({ onFaceDetected, isProcessing, staffName }: CameraFeedProps) {
    const videoRef = useRef<HTMLVideoElement>(null);
+   const lastSearchRef = useRef<number>(0);
+   const searchCooldownRef = useRef<boolean>(false);
+   const matchCooldownRef = useRef<boolean>(false);
    const [cameraActive, setCameraActive] = useState(false);
    const [cameraError, setCameraError] = useState<string | null>(null);
    const [scanningStatus, setScanningStatus] = useState<'idle' | 'scanning' | 'detected'>('idle');
+   const [statusMessage, setStatusMessage] = useState('Position your face in the frame');
  
    useEffect(() => {
      let stream: MediaStream | null = null;
@@ -49,19 +54,82 @@
      };
    }, []);
  
-   // Simulated face detection (Face++ would be integrated here)
-   // In production, this would send frames to Face++ API
-   const simulateFaceDetection = () => {
-     setScanningStatus('scanning');
+   // Capture frame and search for face
+   const captureAndSearch = useCallback(async () => {
+     if (!videoRef.current || !cameraActive || isProcessing) return;
+     if (searchCooldownRef.current || matchCooldownRef.current) return;
      
-     // Simulate Face++ API call delay
-     setTimeout(() => {
-       setScanningStatus('detected');
-       // In production: Face++ would return matched staff_id
-       // For now, we'll trigger a demo callback
-       // onFaceDetected('staff-id-from-face++', 98.5);
-     }, 2000);
-   };
+     const now = Date.now();
+     if (now - lastSearchRef.current < 2500) return;
+     
+     lastSearchRef.current = now;
+     searchCooldownRef.current = true;
+     setScanningStatus('scanning');
+     setStatusMessage('Scanning...');
+ 
+     try {
+       const video = videoRef.current;
+       const canvas = document.createElement('canvas');
+       canvas.width = video.videoWidth;
+       canvas.height = video.videoHeight;
+       const ctx = canvas.getContext('2d');
+       if (!ctx) return;
+       
+       ctx.drawImage(video, 0, 0);
+       const imageBase64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+ 
+       const response = await fetch(
+         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/face-search`,
+         {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ imageBase64 }),
+         }
+       );
+ 
+       const data = await response.json();
+ 
+       if (data.matched && data.staffId && data.confidence) {
+         setScanningStatus('detected');
+         setStatusMessage(`Welcome, ${data.staffName}!`);
+         
+         // Set match cooldown to prevent re-detection for 5 seconds
+         matchCooldownRef.current = true;
+         setTimeout(() => {
+           matchCooldownRef.current = false;
+           setScanningStatus('idle');
+           setStatusMessage('Position your face in the frame');
+         }, 5000);
+ 
+         onFaceDetected(data.staffId, data.confidence);
+       } else {
+         setScanningStatus('idle');
+         if (data.error === 'No enrolled faces yet') {
+           setStatusMessage('No staff enrolled yet');
+         } else {
+           setStatusMessage('Face not recognized');
+           setTimeout(() => setStatusMessage('Position your face in the frame'), 2000);
+         }
+       }
+     } catch (error) {
+       console.error('[CameraFeed] Search error:', error);
+       setScanningStatus('idle');
+       setStatusMessage('Position your face in the frame');
+     } finally {
+       searchCooldownRef.current = false;
+     }
+   }, [cameraActive, isProcessing, onFaceDetected]);
+ 
+   // Auto-search interval
+   useEffect(() => {
+     if (!cameraActive || isProcessing) return;
+ 
+     const interval = setInterval(() => {
+       captureAndSearch();
+     }, 3000);
+ 
+     return () => clearInterval(interval);
+   }, [cameraActive, isProcessing, captureAndSearch]);
  
    return (
      <div className="relative w-full h-full min-h-[400px] bg-sidebar rounded-lg overflow-hidden">
@@ -116,9 +184,7 @@
                {/* Status text */}
                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 px-6 py-2 bg-background/90 rounded-full">
                  <p className="text-sm font-medium text-foreground">
-                   {scanningStatus === 'idle' && 'Position your face in the frame'}
-                   {scanningStatus === 'scanning' && 'Scanning...'}
-                   {scanningStatus === 'detected' && 'Face detected!'}
+                   {statusMessage}
                  </p>
                </div>
              </div>

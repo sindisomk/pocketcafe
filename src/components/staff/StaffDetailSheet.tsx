@@ -1,4 +1,5 @@
-import { User, Pencil } from 'lucide-react';
+ import { useState } from 'react';
+ import { User, Pencil, Scan, CheckCircle } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -16,6 +17,11 @@ import { StaffProfile } from '@/types/staff';
 import { useAuth } from '@/hooks/useAuth';
 import { useStaff } from '@/hooks/useStaff';
 import { cn } from '@/lib/utils';
+ import { FaceEnrollmentDialog } from './FaceEnrollmentDialog';
+ 
+ interface StaffWithFaceToken extends StaffProfile {
+   face_token?: string | null;
+ }
 
 interface StaffDetailSheetProps {
   staff: StaffProfile | null;
@@ -39,8 +45,12 @@ const roleLabels: Record<string, string> = {
 export function StaffDetailSheet({ staff, open, onOpenChange, onEdit }: StaffDetailSheetProps) {
   const { isAdmin } = useAuth();
   const { updateStaff } = useStaff();
+   const [showEnrollment, setShowEnrollment] = useState(false);
 
   if (!staff) return null;
+ 
+   const staffWithToken = staff as StaffWithFaceToken;
+   const hasFaceEnrolled = !!staffWithToken?.face_token;
 
   const initials = staff.name
     .split(' ')
@@ -140,6 +150,39 @@ export function StaffDetailSheet({ staff, open, onOpenChange, onEdit }: StaffDet
           {isAdmin && (
             <>
               <Separator />
+             <div className="space-y-2">
+               <Label className="text-sm font-medium text-muted-foreground">
+                 Biometric Recognition
+               </Label>
+               <div className="flex items-center justify-between rounded-lg border p-4 bg-muted/30">
+                 <div className="flex items-center gap-3">
+                   {hasFaceEnrolled ? (
+                     <CheckCircle className="h-5 w-5 text-green-600" />
+                   ) : (
+                     <Scan className="h-5 w-5 text-muted-foreground" />
+                   )}
+                   <div className="space-y-0.5">
+                     <p className="text-sm font-medium">
+                       {hasFaceEnrolled ? 'Face Enrolled' : 'Not Enrolled'}
+                     </p>
+                     <p className="text-xs text-muted-foreground">
+                       {hasFaceEnrolled 
+                         ? 'Ready for biometric clock-in' 
+                         : 'Enroll face for Kiosk recognition'}
+                     </p>
+                   </div>
+                 </div>
+                 <Button 
+                   variant={hasFaceEnrolled ? "outline" : "default"}
+                   size="sm"
+                   onClick={() => setShowEnrollment(true)}
+                 >
+                   <Scan className="h-4 w-4 mr-2" />
+                   {hasFaceEnrolled ? 'Re-enroll' : 'Enroll Face'}
+                 </Button>
+               </div>
+             </div>
+             <Separator />
               <Button 
                 variant="outline" 
                 className="w-full gap-2" 
@@ -152,6 +195,12 @@ export function StaffDetailSheet({ staff, open, onOpenChange, onEdit }: StaffDet
           )}
         </div>
       </SheetContent>
+     <FaceEnrollmentDialog
+       open={showEnrollment}
+       onOpenChange={setShowEnrollment}
+       staffId={staff.id}
+       staffName={staff.name}
+     />
     </Sheet>
   );
 }

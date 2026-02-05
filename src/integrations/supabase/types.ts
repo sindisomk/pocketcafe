@@ -222,6 +222,7 @@ export type Database = {
           contact_phone: string | null
           contract_type: Database["public"]["Enums"]["contract_type"]
           created_at: string
+          face_token: string | null
           hourly_rate: number
           id: string
           job_title: Database["public"]["Enums"]["job_title"] | null
@@ -240,6 +241,7 @@ export type Database = {
           contact_phone?: string | null
           contract_type?: Database["public"]["Enums"]["contract_type"]
           created_at?: string
+          face_token?: string | null
           hourly_rate?: number
           id?: string
           job_title?: Database["public"]["Enums"]["job_title"] | null
@@ -258,6 +260,7 @@ export type Database = {
           contact_phone?: string | null
           contract_type?: Database["public"]["Enums"]["contract_type"]
           created_at?: string
+          face_token?: string | null
           hourly_rate?: number
           id?: string
           job_title?: Database["public"]["Enums"]["job_title"] | null
@@ -330,6 +333,7 @@ export type Database = {
         Row: {
           contract_type: Database["public"]["Enums"]["contract_type"] | null
           created_at: string | null
+          face_enrolled: boolean | null
           hourly_rate: number | null
           id: string | null
           name: string | null
@@ -341,6 +345,7 @@ export type Database = {
         Insert: {
           contract_type?: Database["public"]["Enums"]["contract_type"] | null
           created_at?: string | null
+          face_enrolled?: never
           hourly_rate?: number | null
           id?: string | null
           name?: string | null
@@ -352,6 +357,7 @@ export type Database = {
         Update: {
           contract_type?: Database["public"]["Enums"]["contract_type"] | null
           created_at?: string | null
+          face_enrolled?: never
           hourly_rate?: number | null
           id?: string | null
           name?: string | null

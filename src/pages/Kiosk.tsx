@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
  import { useAttendance } from '@/hooks/useAttendance';
 import { AttendanceRecord } from '@/types/attendance';
  import { format } from 'date-fns';
+ import { supabase } from '@/integrations/supabase/client';
  
  export default function Kiosk() {
   const navigate = useNavigate();
@@ -23,6 +24,7 @@ import { AttendanceRecord } from '@/types/attendance';
      photo: string | null;
    } | null>(null);
    const [isProcessing, setIsProcessing] = useState(false);
+   const [detectedStaffName, setDetectedStaffName] = useState<string | null>(null);
  
    const { getActiveRecord, attendance } = useAttendance();
  
@@ -34,15 +36,27 @@ import { AttendanceRecord } from '@/types/attendance';
      return () => clearInterval(timer);
    }, []);
  
-   // Handle Face++ detection (placeholder for actual Face++ integration)
+   // Handle Face++ detection
    const handleFaceDetected = (staffId: string, confidence: number) => {
-     // In production: fetch staff details and show action modal
      setIsProcessing(true);
      
-     setTimeout(() => {
-       setIsProcessing(false);
-       // Would set selectedStaff from Face++ match
-     }, 1000);
+     // Fetch staff details from public view
+     supabase
+       .from('staff_profiles_public')
+       .select('id, name, profile_photo_url')
+       .eq('id', staffId)
+       .single()
+       .then(({ data, error }) => {
+         setIsProcessing(false);
+         if (!error && data) {
+           setSelectedStaff({
+             id: data.id as string,
+             name: data.name as string,
+             photo: data.profile_photo_url as string | null,
+           });
+           setDetectedStaffName(data.name as string);
+         }
+       });
    };
  
    // Handle manager override success
@@ -134,6 +148,7 @@ import { AttendanceRecord } from '@/types/attendance';
              <CameraFeed 
                onFaceDetected={handleFaceDetected}
                isProcessing={isProcessing}
+               staffName={detectedStaffName}
              />
            </div>
          </div>
