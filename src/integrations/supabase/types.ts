@@ -530,7 +530,6 @@ export type Database = {
           contract_type: Database["public"]["Enums"]["contract_type"] | null
           created_at: string | null
           face_enrolled: boolean | null
-          hourly_rate: number | null
           id: string | null
           name: string | null
           profile_photo_url: string | null
@@ -542,7 +541,6 @@ export type Database = {
           contract_type?: Database["public"]["Enums"]["contract_type"] | null
           created_at?: string | null
           face_enrolled?: never
-          hourly_rate?: number | null
           id?: string | null
           name?: string | null
           profile_photo_url?: string | null
@@ -554,7 +552,6 @@ export type Database = {
           contract_type?: Database["public"]["Enums"]["contract_type"] | null
           created_at?: string | null
           face_enrolled?: never
-          hourly_rate?: number | null
           id?: string | null
           name?: string | null
           profile_photo_url?: string | null
