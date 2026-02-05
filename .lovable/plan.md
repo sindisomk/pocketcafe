@@ -1,262 +1,218 @@
 
 
 ## Goal
-Integrate Face++ facial recognition for biometric clock-in/out at the Kiosk, with facial enrollment during staff onboarding.
+Fix all identified Kiosk issues and add an in-camera clock-in/out overlay button when a staff member is detected via facial recognition.
 
 ---
 
-## Architecture Overview
+## Issues Identified
 
-```text
-+-------------------+         +--------------------+         +----------------+
-|   Kiosk Camera    |  --->   |  Face++ Edge Fns   |  --->   |   Face++ API   |
-|   (captures face) |         |  (detect/search)   |         |   (cloud)      |
-+-------------------+         +--------------------+         +----------------+
-         |                             |
-         v                             v
-+-------------------+         +--------------------+
-|  StaffFormDialog  |         |  staff_profiles    |
-|  (enrollment UI)  |         |  (face_token col)  |
-+-------------------+         +--------------------+
-```
+| Issue | Current State | Required Fix |
+|-------|---------------|--------------|
+| **Manager Override Tracking** | PIN verification returns `manager_id` but it's never passed to attendance mutations | Store `manager_id` and pass to `clockIn`/`clockOut` with `override_by` and `override_pin_used: true` |
+| **Face Confidence Not Stored** | `CameraFeed` receives `confidence` from Face++ but doesn't pass it to `clockIn` | Pass `faceConfidence` through the flow and store in `attendance_records.face_match_confidence` |
+| **No In-Camera Action Buttons** | User must wait for modal after face detection | Add overlay buttons directly on camera when face is detected for quick clock-in/out |
+| **useAttendance.clockIn Missing Fields** | `clockIn` mutation doesn't accept `faceConfidence`, `overrideBy`, or `overridePinUsed` | Extend mutation to accept and persist all fields |
 
 ---
 
 ## Implementation Steps
 
-### Phase 1: Database Schema Updates
+### 1. Update `useAttendance` Hook
+Extend the `clockIn` mutation to accept optional fields for tracking:
 
-Add a column to store Face++ face tokens for enrolled staff:
-
-```sql
--- Add face_token column to staff_profiles
-ALTER TABLE public.staff_profiles 
-ADD COLUMN face_token TEXT;
-
-COMMENT ON COLUMN public.staff_profiles.face_token IS 
-  'Face++ face_token for biometric recognition. Enrolled during onboarding.';
+```typescript
+// src/hooks/useAttendance.ts - Updated clockIn parameters
+clockIn.mutateAsync({ 
+  staffId: string,
+  faceConfidence?: number,      // NEW: Face++ match score
+  overrideBy?: string,          // NEW: Manager user_id from PIN verify
+  overridePinUsed?: boolean     // NEW: Was this a PIN override?
+})
 ```
 
-Create a storage bucket for temporary face images during enrollment:
+**Database insert changes:**
+- Pass `face_match_confidence` when provided
+- Pass `override_by` and `override_pin_used` when manager override is used
 
-```sql
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('face-enrollment', 'face-enrollment', false);
+---
 
--- RLS policies for the bucket
-CREATE POLICY "Authenticated users can upload face images"
-ON storage.objects FOR INSERT
-TO authenticated
-WITH CHECK (bucket_id = 'face-enrollment');
+### 2. Update `ClockActionModal` Component
+Pass additional context from parent:
 
-CREATE POLICY "Authenticated users can read face images"
-ON storage.objects FOR SELECT
-TO authenticated
-USING (bucket_id = 'face-enrollment');
-
-CREATE POLICY "Authenticated users can delete face images"
-ON storage.objects FOR DELETE
-TO authenticated
-USING (bucket_id = 'face-enrollment');
+```typescript
+// Props additions
+interface ClockActionModalProps {
+  // ...existing props
+  faceConfidence?: number;       // NEW
+  overrideManagerId?: string;    // NEW
+  isManagerOverride?: boolean;   // NEW
+}
 ```
 
----
-
-### Phase 2: Edge Functions for Face++ API
-
-Create two edge functions to handle Face++ operations:
-
-**Function 1: `face-enroll`**
-- Receives base64 image from enrollment UI
-- Calls Face++ Detect API to get face_token
-- Calls Face++ FaceSet AddFace to register the face
-- Stores face_token in staff_profiles table
-- Returns success/failure
-
-**Function 2: `face-search`**
-- Receives base64 image from Kiosk camera
-- Calls Face++ Detect API to get face_token from captured image
-- Calls Face++ Search API to match against enrolled faces
-- Returns matched staff_id and confidence score (or no match)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/face-enroll` | POST | Enroll a staff member's face |
-| `/face-search` | POST | Search for a face in the Kiosk |
+These will be passed to the `clockIn` mutation.
 
 ---
 
-### Phase 3: Face++ API Integration Details
+### 3. Update Kiosk State Management
+Track override context in `Kiosk.tsx`:
 
-**Required Secrets:**
-- `FACEPP_API_KEY` - Face++ API Key
-- `FACEPP_API_SECRET` - Face++ API Secret
+```typescript
+// New state for manager override tracking
+const [managerOverrideId, setManagerOverrideId] = useState<string | null>(null);
+const [detectedConfidence, setDetectedConfidence] = useState<number | null>(null);
+```
 
-**Face++ API Endpoints Used:**
-| API | Endpoint | Purpose |
-|-----|----------|---------|
-| Detect | `POST https://api-us.faceplusplus.com/facepp/v3/detect` | Detect face and get face_token |
-| FaceSet Create | `POST https://api-us.faceplusplus.com/facepp/v3/faceset/create` | Create a FaceSet (one-time setup) |
-| FaceSet AddFace | `POST https://api-us.faceplusplus.com/facepp/v3/faceset/addface` | Add face to FaceSet |
-| Search | `POST https://api-us.faceplusplus.com/facepp/v3/search` | Search for matching face |
-
-**FaceSet Configuration:**
-- One FaceSet per restaurant: `outer_id: "pocketcafe-staff"`
-- Contains all enrolled staff face_tokens
+**Flow changes:**
+1. `ManagerPinPad.onPinVerified` now returns `manager_id`
+2. Store `manager_id` in state when override mode is used
+3. Pass to `ClockActionModal` when opened
+4. Clear after successful action
 
 ---
 
-### Phase 4: Facial Enrollment UI
+### 4. Update `ManagerPinPad` Component
+Change `onPinVerified` callback to include manager ID:
 
-Add enrollment functionality to the Staff onboarding process:
+```typescript
+// Current signature
+onPinVerified: () => void
 
-**New Component: `FaceEnrollmentCapture.tsx`**
-- Camera capture interface with face detection overlay
-- "Capture Photo" button with visual feedback
-- Preview of captured image
-- "Enroll Face" confirmation button
-- Loading/success/error states
+// New signature
+onPinVerified: (managerId: string) => void
+```
 
-**Integration Points:**
-1. Add "Enroll Face" step to `StaffFormDialog` (optional during creation)
-2. Add "Enroll Face" button to `StaffDetailSheet` for existing staff
-3. Show enrollment status badge on staff cards
+The component already receives `manager_id` from the edge function - just needs to pass it up.
 
 ---
 
-### Phase 5: Kiosk Camera Integration
+### 5. Add In-Camera Clock-In/Out Overlay
+When a face is detected and matched, show action buttons directly on the camera feed:
 
-Update `CameraFeed.tsx` for real face detection:
+**New UI Component:** Overlay inside `CameraFeed.tsx`
 
-**Changes:**
-1. Periodic frame capture (every 2-3 seconds when face is positioned)
-2. Send captured frame to `face-search` edge function
-3. Handle search response:
-   - Match found: Call `onFaceDetected(staffId, confidence)`
-   - No match: Continue scanning with visual feedback
-4. Debounce/throttle to avoid API overload
-5. Show confidence threshold feedback
-
-**Flow:**
 ```text
-Camera Active → Detect Face in Frame → Capture Image → 
-  → Send to face-search → Match Found? 
-    → Yes: Show Staff Name + Clock Action Modal
-    → No: "Face not recognized" + Continue scanning
++------------------------------------------+
+|                                          |
+|           [Camera Feed]                  |
+|                                          |
+|    +---------------------------+         |
+|    |  👤 Staff Name Detected   |         |
+|    |     Confidence: 95%       |         |
+|    |                           |         |
+|    |  [Clock In]  [Clock Out]  |         |
+|    |     [Start Break]         |         |
+|    +---------------------------+         |
+|                                          |
++------------------------------------------+
+```
+
+**Behavior:**
+- Appears when `scanningStatus === 'detected'`
+- Shows detected staff name and confidence
+- Buttons are contextual (Clock In if not clocked in, Break/Out if already clocked in)
+- Clicking a button triggers the action directly (no modal needed)
+- Auto-hides after 5 seconds of inactivity
+
+---
+
+### 6. Updated CameraFeed Props
+Need additional information to show contextual buttons:
+
+```typescript
+interface CameraFeedProps {
+  onFaceDetected: (staffId: string, confidence: number) => void;
+  isProcessing: boolean;
+  staffName?: string | null;
+  
+  // NEW props for in-camera actions
+  detectedStaffId?: string | null;
+  activeRecord?: AttendanceRecord | null;
+  onClockAction?: (action: 'clock_in' | 'start_break' | 'end_break' | 'clock_out', staffId: string, confidence: number) => void;
+}
 ```
 
 ---
 
-## Files to Create/Modify
-
-| File | Action | Description |
-|------|--------|-------------|
-| `supabase/migrations/xxxx_add_face_token.sql` | Create | Add face_token column + storage bucket |
-| `supabase/functions/face-enroll/index.ts` | Create | Face enrollment edge function |
-| `supabase/functions/face-search/index.ts` | Create | Face search edge function |
-| `src/components/staff/FaceEnrollmentCapture.tsx` | Create | Camera capture for enrollment |
-| `src/components/staff/FaceEnrollmentDialog.tsx` | Create | Dialog wrapper for enrollment |
-| `src/components/kiosk/CameraFeed.tsx` | Modify | Integrate real Face++ search |
-| `src/components/staff/StaffFormDialog.tsx` | Modify | Add optional enrollment step |
-| `src/components/staff/StaffDetailSheet.tsx` | Modify | Add "Enroll Face" button |
-| `src/hooks/useFaceEnrollment.ts` | Create | Hook for enrollment operations |
-| `src/hooks/useFaceSearch.ts` | Create | Hook for Kiosk face search |
-
----
-
-## Technical Details
-
-### Edge Function: face-enroll
+### 7. Kiosk Flow Update
+Add direct clock action handler:
 
 ```typescript
-// Key operations:
-// 1. Receive { staffId, imageBase64 }
-// 2. Call Face++ Detect API with image
-// 3. Extract face_token from response
-// 4. Call Face++ FaceSet AddFace with face_token
-// 5. Update staff_profiles.face_token
-// 6. Return { success, faceToken }
-```
-
-### Edge Function: face-search
-
-```typescript
-// Key operations:
-// 1. Receive { imageBase64 }
-// 2. Call Face++ Detect API with image
-// 3. Call Face++ Search API with face_token + faceset outer_id
-// 4. If match found with confidence > 80%:
-//    - Query staff_profiles by face_token
-//    - Return { matched: true, staffId, staffName, confidence }
-// 5. Else return { matched: false }
-```
-
-### Camera Frame Capture
-
-```typescript
-// Convert video frame to base64:
-const canvas = document.createElement('canvas');
-canvas.width = video.videoWidth;
-canvas.height = video.videoHeight;
-const ctx = canvas.getContext('2d');
-ctx.drawImage(video, 0, 0);
-const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+// Handle quick action from camera overlay
+const handleCameraClockAction = async (
+  action: 'clock_in' | 'start_break' | 'end_break' | 'clock_out',
+  staffId: string,
+  confidence: number
+) => {
+  switch (action) {
+    case 'clock_in':
+      await clockIn.mutateAsync({ staffId, faceConfidence: confidence });
+      break;
+    case 'start_break':
+      const record = getActiveRecord(staffId);
+      if (record) await startBreak.mutateAsync(record.id);
+      break;
+    // ... etc
+  }
+};
 ```
 
 ---
 
-## Security Considerations
+## Files to Modify
 
-| Aspect | Approach |
-|--------|----------|
-| API Keys | Stored as Supabase secrets, never exposed to client |
-| Face Data | Only face_token stored (not images), GDPR-friendly |
-| Storage | Temporary enrollment images auto-deleted after processing |
-| Access Control | Enrollment requires authenticated admin/manager |
-| Kiosk Search | No auth required (public kiosk mode) |
+| File | Changes |
+|------|---------|
+| `src/hooks/useAttendance.ts` | Extend `clockIn` mutation with `faceConfidence`, `overrideBy`, `overridePinUsed` params |
+| `src/components/kiosk/ManagerPinPad.tsx` | Update `onPinVerified` to return `managerId` |
+| `src/components/kiosk/ClockActionModal.tsx` | Add props for confidence and override tracking, pass to mutations |
+| `src/components/kiosk/CameraFeed.tsx` | Add in-camera action overlay when face detected |
+| `src/pages/Kiosk.tsx` | Track manager ID, confidence; wire up camera actions; pass data to modal |
 
 ---
 
 ## User Experience Flow
 
-**Enrollment (during onboarding):**
-1. Manager creates new staff member in StaffFormDialog
-2. After saving basic info, "Enroll Face" dialog appears
-3. Staff positions face in camera frame
-4. Manager clicks "Capture" when ready
-5. Preview shown, Manager clicks "Enroll"
-6. Success message, staff is now ready for biometric clock-in
+### Face Recognition Clock-In (Quick Path)
+1. Staff approaches kiosk
+2. Camera detects and recognizes face
+3. Overlay appears on camera: "Welcome, John! [Clock In] [More...]"
+4. Staff taps "Clock In"
+5. Success toast, overlay fades, ready for next person
 
-**Kiosk Clock-In:**
-1. Staff approaches Kiosk tablet
-2. Positions face in camera frame
-3. System automatically detects and searches
-4. If recognized: Shows staff name and Clock Action Modal
-5. Staff taps "Clock In" (or "Start Break", "Clock Out")
-6. Confirmation shown
+### Face Recognition with Full Modal (Alternative)
+1. Staff approaches kiosk
+2. Camera detects and recognizes face
+3. Staff waits 2 seconds without tapping overlay
+4. Full `ClockActionModal` opens with all options
+5. Staff selects action
+
+### Manager Override Flow
+1. Manager taps "Manager Override"
+2. Enters PIN
+3. PIN verified → `manager_id` captured
+4. Staff selection modal opens
+5. Manager selects staff member
+6. Clock action recorded with `override_by` and `override_pin_used: true`
 
 ---
 
-## API Key Setup Required
+## Database Fields Utilized
 
-Before implementation, Face++ API credentials must be configured:
-
-1. Create a Face++ account at console.faceplusplus.com
-2. Create an API Key and API Secret
-3. Store in Supabase secrets:
-   - `FACEPP_API_KEY`
-   - `FACEPP_API_SECRET`
+| Field | When Populated |
+|-------|----------------|
+| `face_match_confidence` | Face++ detection confidence (0-100) |
+| `override_by` | Manager's `user_id` when PIN override used |
+| `override_pin_used` | `true` when clock action is via manager PIN |
 
 ---
 
 ## Testing Checklist
-
-- [ ] Face enrollment captures and stores face_token
-- [ ] Multiple staff can be enrolled to same FaceSet
-- [ ] Kiosk camera detects faces in real-time
-- [ ] Recognized staff triggers Clock Action Modal
-- [ ] Unrecognized faces show appropriate feedback
-- [ ] Confidence threshold prevents false positives
-- [ ] Manager Override still works as fallback
-- [ ] Exit Kiosk still requires PIN
+- [ ] Clock in via face recognition stores `face_match_confidence`
+- [ ] Clock in via manager override stores `override_by` and `override_pin_used`
+- [ ] In-camera overlay appears when face is detected
+- [ ] Overlay shows correct action buttons based on current status
+- [ ] Quick clock-in from overlay works without modal
+- [ ] Overlay auto-hides after timeout
+- [ ] TodayRoster updates in real-time after clock actions
 
