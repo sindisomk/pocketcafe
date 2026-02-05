@@ -1,97 +1,210 @@
 
 
 ## Goal
-Fix dropdown lists (Select and Popover/Calendar) in the "Add Staff Member" dialog that are not displaying correctly or not appearing at all.
+Implement secure manager PIN storage and verification using bcrypt hashing via a backend function, replacing the current placeholder logic.
 
-## Root Cause Analysis
+## Current State Analysis
 
-After reviewing the code and session replay data, I identified two key issues:
+| Component | Current Status |
+|-----------|---------------|
+| `manager_pins` table | Exists with `user_id`, `pin_hash` columns |
+| RLS policies | Admins can manage all PINs, users can view own |
+| PIN verification | Accepts any 4+ digit PIN (placeholder) |
+| PIN settings save | UI only, doesn't persist to database |
+| Backend functions | None exist |
 
-### Issue 1: Z-index Stacking Conflict
-| Component | Current z-index |
-|-----------|-----------------|
-| DialogOverlay | z-50 |
-| DialogContent | z-[60] |
-| SelectContent (dropdowns) | z-50 |
-| PopoverContent (calendar) | z-50 |
+## Security Architecture
 
-The dropdown portals render at z-50, which is **below** the DialogContent at z-[60]. This causes dropdowns to appear behind the dialog or be completely hidden.
-
-### Issue 2: Pointer-Events Inheritance
-The workaround that clears `pointer-events: none` from the body runs when the dialog opens, but:
-- Radix Select and Popover also portal their content to `<body>`
-- When a dropdown opens, Radix may re-apply `pointer-events: none` to the body
-- The dropdown content then inherits this and becomes non-interactive
-
-### Issue 3: Viewport Height Constraint
-The SelectContent viewport uses `h-[var(--radix-select-trigger-height)]` which can constrain the dropdown to the height of the trigger button, making items barely visible.
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                        FRONTEND                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────────────┐      ┌──────────────────────┐        │
+│  │  ManagerPinSettings  │      │   ManagerPinPad      │        │
+│  │  (Admin/Manager)     │      │   (Kiosk)            │        │
+│  │                      │      │                      │        │
+│  │  - Set new PIN       │      │  - Enter PIN         │        │
+│  │  - Change PIN        │      │  - Verify            │        │
+│  └──────────┬───────────┘      └──────────┬───────────┘        │
+│             │                              │                    │
+└─────────────┼──────────────────────────────┼────────────────────┘
+              │                              │
+              ▼                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    BACKEND FUNCTIONS                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────────────┐      ┌──────────────────────┐        │
+│  │  manager-pin         │      │  manager-pin         │        │
+│  │  action: "set"       │      │  action: "verify"    │        │
+│  │                      │      │                      │        │
+│  │  - Validate format   │      │  - No auth required  │        │
+│  │  - Hash with bcrypt  │      │  - Compare hash      │        │
+│  │  - Upsert to DB      │      │  - Return success    │        │
+│  └──────────┬───────────┘      └──────────┬───────────┘        │
+│             │                              │                    │
+└─────────────┼──────────────────────────────┼────────────────────┘
+              │                              │
+              ▼                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    DATABASE                                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  manager_pins                                                    │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ id | user_id | pin_hash (bcrypt)      | created/updated  │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  RLS: Admins manage all, users view own                         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## Implementation Plan
 
-### Step 1: Increase z-index for SelectContent
-In `src/components/ui/select.tsx`, change `SelectContent` from `z-50` to `z-[100]` to ensure it renders above dialogs.
+### Step 1: Create Backend Function for PIN Operations
+
+Create a single backend function `manager-pin` that handles both setting and verifying PINs:
+
+**File:** `supabase/functions/manager-pin/index.ts`
 
 ```text
-Change: "relative z-50 max-h-96..." 
-To:     "relative z-[100] max-h-96..."
+Endpoints:
+  POST /manager-pin
+  Body: { action: "set", pin: "1234", current_pin?: "oldpin" }
+    - Requires authenticated admin/manager
+    - Validates PIN format (4-8 digits)
+    - Hashes PIN with bcrypt (cost factor 10)
+    - If current_pin provided, verify it first
+    - Upserts to manager_pins table
+    - Returns { success: true }
+
+  POST /manager-pin  
+  Body: { action: "verify", pin: "1234" }
+    - No authentication required (Kiosk use)
+    - Fetches all manager PIN hashes (using service role)
+    - Compares against each hash
+    - Returns { valid: true, manager_id: "..." } if match
+    - Returns { valid: false } if no match
 ```
 
-### Step 2: Increase z-index for PopoverContent
-In `src/components/ui/popover.tsx`, change `PopoverContent` from `z-50` to `z-[100]` to ensure the calendar picker appears above dialogs.
+### Step 2: Update ManagerPinSettings Component
 
-```text
-Change: "z-50 w-72 rounded-md..."
-To:     "z-[100] w-72 rounded-md..."
-```
+Modify `src/components/settings/ManagerPinSettings.tsx` to:
+- Call the backend function to set/update PIN
+- Handle current PIN verification when changing
+- Show proper loading states and error messages
+- Clear form on successful save
 
-### Step 3: Add pointer-events-auto to dropdown content
-Add `pointer-events-auto` class to both `SelectContent` and `PopoverContent` to ensure they remain interactive even if the body has `pointer-events: none`.
+### Step 3: Update ManagerPinPad Component  
 
-### Step 4: Fix Viewport height constraint
-In `SelectContent`, modify the viewport to use `max-h-[var(--radix-select-content-available-height)]` instead of a fixed height based on trigger, ensuring the dropdown can expand to show all items.
+Modify `src/components/kiosk/ManagerPinPad.tsx` to:
+- Call the backend function to verify PIN
+- Handle verification response
+- Show proper error messages for invalid PIN
+- Return manager info on success for audit trail
 
-## Files to be Changed
+### Step 4: Create Custom Hook for PIN Operations
 
-| File | Change |
-|------|--------|
-| `src/components/ui/select.tsx` | Increase z-index to z-[100], add pointer-events-auto, fix viewport height |
-| `src/components/ui/popover.tsx` | Increase z-index to z-[100], add pointer-events-auto |
+Create `src/hooks/useManagerPin.ts` to:
+- Provide `verifyPin(pin)` function
+- Provide `setPin(newPin, currentPin?)` function
+- Handle loading and error states
+- Encapsulate backend function calls
+
+## Files to be Created/Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `supabase/functions/manager-pin/index.ts` | Create | Backend function for hash/verify |
+| `src/hooks/useManagerPin.ts` | Create | Hook for PIN operations |
+| `src/components/settings/ManagerPinSettings.tsx` | Modify | Use hook to persist PIN |
+| `src/components/kiosk/ManagerPinPad.tsx` | Modify | Use hook to verify PIN |
 
 ## Technical Details
 
-### select.tsx changes:
-```typescript
-// SelectContent className change:
-"relative z-[100] max-h-96 min-w-[8rem] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md pointer-events-auto ..."
+### Backend Function Implementation
 
-// Viewport className change - remove fixed height:
-"p-1 max-h-[--radix-select-content-available-height]"
-// instead of:
-"p-1 h-[var(--radix-select-trigger-height)]"
+```typescript
+// supabase/functions/manager-pin/index.ts
+import { createClient } from "npm:@supabase/supabase-js@2";
+import * as bcrypt from "jsr:@da/bcrypt";
+
+Deno.serve(async (req) => {
+  // Handle CORS
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const { action, pin, current_pin } = await req.json();
+  
+  if (action === "set") {
+    // Require authentication
+    const authHeader = req.headers.get("Authorization");
+    // Validate user is admin/manager
+    // Hash PIN: bcrypt.hashSync(pin, 10)
+    // Upsert to manager_pins
+  }
+  
+  if (action === "verify") {
+    // No auth required - Kiosk use case
+    // Fetch all PIN hashes using service role client
+    // Compare: bcrypt.compareSync(pin, hash)
+    // Return match result
+  }
+});
 ```
 
-### popover.tsx changes:
+### Frontend Hook Implementation
+
 ```typescript
-// PopoverContent className change:
-"z-[100] w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none pointer-events-auto ..."
+// src/hooks/useManagerPin.ts
+export function useManagerPin() {
+  const verifyPin = async (pin: string) => {
+    const response = await supabase.functions.invoke("manager-pin", {
+      body: { action: "verify", pin },
+    });
+    return response.data;
+  };
+
+  const setPin = async (newPin: string, currentPin?: string) => {
+    const response = await supabase.functions.invoke("manager-pin", {
+      body: { action: "set", pin: newPin, current_pin: currentPin },
+    });
+    return response.data;
+  };
+
+  return { verifyPin, setPin };
+}
 ```
+
+## Security Considerations
+
+1. **PIN never stored in plain text** - Always hashed with bcrypt before storage
+2. **PIN never logged** - No console.log or error messages containing the PIN
+3. **Verification is timing-safe** - bcrypt.compareSync handles this internally
+4. **Rate limiting consideration** - For production, add rate limiting to prevent brute force
+5. **Audit trail** - Return manager_id on successful verification for attendance records
+6. **No PIN in responses** - API never returns the PIN or hash in responses
 
 ## Success Criteria
 
-- All dropdown selects (Department, Job Title, Contract Type, Tax Code, NIC Category) appear and are fully visible when clicked
-- The Start Date calendar popover appears above the dialog and is interactive
-- Dropdown items can be selected with mouse clicks
-- No visual artifacts or transparent/invisible dropdowns
-- Works in DuckDuckGo and other browsers
+- Admin/Manager can set a new PIN from Settings
+- PIN is stored as bcrypt hash in database
+- Kiosk PIN pad verifies against stored hashes
+- Invalid PIN shows appropriate error message
+- Successful verification allows manager override
+- Attendance records can track which manager authorized override
 
 ## Testing Steps
 
-1. Open Staff page and click "Add Staff"
-2. Click the "Department" dropdown - verify it appears with all 4 options visible
-3. Select a department, then click "Job Title" - verify job titles appear
-4. Click "Contract Type" dropdown - verify both options appear
-5. Click "Tax Code" dropdown - verify all tax codes appear and are scrollable
-6. Click "NIC Category" dropdown - verify all 9 categories appear
-7. Click "Start Date" and verify the calendar appears and dates can be selected
-8. Complete the form and submit to verify everything saves correctly
+1. Go to Settings > Manager PIN tab as admin
+2. Enter a new PIN (e.g., "1234") and confirm it
+3. Click "Update PIN" - should succeed
+4. Go to Kiosk page (/kiosk)
+5. Click "Manager Override" button
+6. Enter the PIN "1234" - should succeed and open staff select
+7. Try entering wrong PIN "9999" - should show error message
+8. Verify database has hashed PIN (not plain text)
 
