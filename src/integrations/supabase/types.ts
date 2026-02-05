@@ -227,9 +227,11 @@ export type Database = {
           job_title: Database["public"]["Enums"]["job_title"] | null
           name: string
           ni_number: string | null
+          nic_category: string | null
           profile_photo_url: string | null
           role: Database["public"]["Enums"]["staff_role"]
           start_date: string | null
+          tax_code: string | null
           updated_at: string
           user_id: string | null
         }
@@ -243,9 +245,11 @@ export type Database = {
           job_title?: Database["public"]["Enums"]["job_title"] | null
           name: string
           ni_number?: string | null
+          nic_category?: string | null
           profile_photo_url?: string | null
           role?: Database["public"]["Enums"]["staff_role"]
           start_date?: string | null
+          tax_code?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -259,9 +263,11 @@ export type Database = {
           job_title?: Database["public"]["Enums"]["job_title"] | null
           name?: string
           ni_number?: string | null
+          nic_category?: string | null
           profile_photo_url?: string | null
           role?: Database["public"]["Enums"]["staff_role"]
           start_date?: string | null
+          tax_code?: string | null
           updated_at?: string
           user_id?: string | null
         }
