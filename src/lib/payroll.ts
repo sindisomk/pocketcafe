@@ -13,6 +13,12 @@
  // Paid break duration in hours
  const PAID_BREAK_HOURS = 0.5; // 30 minutes
  
+// Overtime threshold (hours per week before overtime kicks in)
+const WEEKLY_OVERTIME_THRESHOLD = 40;
+
+// Overtime pay multiplier (1.5x = time and a half)
+const OVERTIME_MULTIPLIER = 1.5;
+
  /**
   * Calculate hours worked from an attendance record
   * Includes the 30-minute paid break in total hours
@@ -43,6 +49,7 @@
  
  /**
   * Generate payroll summary for a staff member
+ * Includes overtime calculation for hours over 40/week
   */
  export function generatePayrollSummary(
    staff: StaffProfile,
@@ -71,7 +78,14 @@
      }
    });
  
-   const grossPay = totalHoursWorked * staff.hourly_rate;
+  // Calculate overtime (hours over 40 in the week)
+  const regularHoursWorked = Math.min(totalHoursWorked, WEEKLY_OVERTIME_THRESHOLD);
+  const overtimeHours = Math.max(0, totalHoursWorked - WEEKLY_OVERTIME_THRESHOLD);
+  
+  // Regular pay + overtime pay (1.5x rate)
+  const regularPay = regularHoursWorked * staff.hourly_rate;
+  const overtimePay = overtimeHours * staff.hourly_rate * OVERTIME_MULTIPLIER;
+  const grossPay = regularPay + overtimePay;
    
    // Holiday accrual only applies to zero-hour contracts
    const holidayAccrual = staff.contract_type === 'zero_rate' 
@@ -83,9 +97,11 @@
      staffName: staff.name,
      totalHoursWorked: Math.round(totalHoursWorked * 100) / 100,
      paidBreakHours: Math.round(paidBreakHours * 100) / 100,
-     regularHours: Math.round((totalHoursWorked - paidBreakHours) * 100) / 100,
+    regularHours: Math.round(regularHoursWorked * 100) / 100,
+    overtimeHours: Math.round(overtimeHours * 100) / 100,
      hourlyRate: staff.hourly_rate,
      grossPay: Math.round(grossPay * 100) / 100,
+    overtimePay: Math.round(overtimePay * 100) / 100,
      holidayAccrual: Math.round(holidayAccrual * 100) / 100,
    };
  }
@@ -156,7 +172,9 @@
      'Total Hours Worked',
      'Paid Break Hours',
      'Regular Hours',
+    'Overtime Hours',
      'Hourly Rate (£)',
+    'Overtime Pay (£)',
      'Gross Pay (£)',
      'Holiday Accrual (£)',
    ];
@@ -166,7 +184,9 @@
      s.totalHoursWorked.toFixed(2),
      s.paidBreakHours.toFixed(2),
      s.regularHours.toFixed(2),
+    s.overtimeHours.toFixed(2),
      s.hourlyRate.toFixed(2),
+    s.overtimePay.toFixed(2),
      s.grossPay.toFixed(2),
      s.holidayAccrual.toFixed(2),
    ]);
@@ -179,8 +199,9 @@
      headers.join(','),
      ...rows.map((row) => row.join(',')),
      '',
-     `Total Gross Pay,,,,,£${summaries.reduce((sum, s) => sum + s.grossPay, 0).toFixed(2)},`,
-     `Total Holiday Accrual,,,,,,£${summaries.reduce((sum, s) => sum + s.holidayAccrual, 0).toFixed(2)}`,
+    `Total Overtime Pay,,,,,,£${summaries.reduce((sum, s) => sum + s.overtimePay, 0).toFixed(2)},`,
+    `Total Gross Pay,,,,,,,£${summaries.reduce((sum, s) => sum + s.grossPay, 0).toFixed(2)},`,
+    `Total Holiday Accrual,,,,,,,,£${summaries.reduce((sum, s) => sum + s.holidayAccrual, 0).toFixed(2)}`,
    ];
  
    return csvContent.join('\n');

@@ -218,38 +218,50 @@ export type Database = {
       }
       staff_profiles: {
         Row: {
+          contact_email: string | null
+          contact_phone: string | null
           contract_type: Database["public"]["Enums"]["contract_type"]
           created_at: string
           hourly_rate: number
           id: string
+          job_title: Database["public"]["Enums"]["job_title"] | null
           name: string
           ni_number: string | null
           profile_photo_url: string | null
           role: Database["public"]["Enums"]["staff_role"]
+          start_date: string | null
           updated_at: string
           user_id: string | null
         }
         Insert: {
+          contact_email?: string | null
+          contact_phone?: string | null
           contract_type?: Database["public"]["Enums"]["contract_type"]
           created_at?: string
           hourly_rate?: number
           id?: string
+          job_title?: Database["public"]["Enums"]["job_title"] | null
           name: string
           ni_number?: string | null
           profile_photo_url?: string | null
           role?: Database["public"]["Enums"]["staff_role"]
+          start_date?: string | null
           updated_at?: string
           user_id?: string | null
         }
         Update: {
+          contact_email?: string | null
+          contact_phone?: string | null
           contract_type?: Database["public"]["Enums"]["contract_type"]
           created_at?: string
           hourly_rate?: number
           id?: string
+          job_title?: Database["public"]["Enums"]["job_title"] | null
           name?: string
           ni_number?: string | null
           profile_photo_url?: string | null
           role?: Database["public"]["Enums"]["staff_role"]
+          start_date?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -360,10 +372,29 @@ export type Database = {
       app_role: "admin" | "manager"
       attendance_status: "clocked_in" | "on_break" | "clocked_out"
       contract_type: "salaried" | "zero_rate"
+      job_title:
+        | "server"
+        | "host"
+        | "bartender"
+        | "barback"
+        | "busser"
+        | "food_runner"
+        | "head_chef"
+        | "sous_chef"
+        | "line_cook"
+        | "prep_cook"
+        | "dishwasher"
+        | "kitchen_porter"
+        | "bar_manager"
+        | "mixologist"
+        | "general_manager"
+        | "assistant_manager"
+        | "shift_supervisor"
+        | "floor_manager"
       leave_status: "pending" | "approved" | "rejected"
       schedule_status: "draft" | "published"
       shift_type: "morning" | "evening"
-      staff_role: "kitchen" | "floor" | "management"
+      staff_role: "kitchen" | "floor" | "management" | "bar"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -494,10 +525,30 @@ export const Constants = {
       app_role: ["admin", "manager"],
       attendance_status: ["clocked_in", "on_break", "clocked_out"],
       contract_type: ["salaried", "zero_rate"],
+      job_title: [
+        "server",
+        "host",
+        "bartender",
+        "barback",
+        "busser",
+        "food_runner",
+        "head_chef",
+        "sous_chef",
+        "line_cook",
+        "prep_cook",
+        "dishwasher",
+        "kitchen_porter",
+        "bar_manager",
+        "mixologist",
+        "general_manager",
+        "assistant_manager",
+        "shift_supervisor",
+        "floor_manager",
+      ],
       leave_status: ["pending", "approved", "rejected"],
       schedule_status: ["draft", "published"],
       shift_type: ["morning", "evening"],
-      staff_role: ["kitchen", "floor", "management"],
+      staff_role: ["kitchen", "floor", "management", "bar"],
     },
   },
 } as const

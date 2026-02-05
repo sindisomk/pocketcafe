@@ -8,7 +8,8 @@
    AlertTriangle,
    Clock,
    Coffee,
-   Calculator
+  Calculator,
+  Timer
  } from 'lucide-react';
  import { AppLayout } from '@/components/layout/AppLayout';
  import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -55,6 +56,8 @@
    const totals = useMemo(() => {
      return {
        hours: payrollSummaries.reduce((sum, s) => sum + s.totalHoursWorked, 0),
+      overtimeHours: payrollSummaries.reduce((sum, s) => sum + s.overtimeHours, 0),
+      overtimePay: payrollSummaries.reduce((sum, s) => sum + s.overtimePay, 0),
        grossPay: payrollSummaries.reduce((sum, s) => sum + s.grossPay, 0),
        holidayAccrual: payrollSummaries.reduce((sum, s) => sum + s.holidayAccrual, 0),
      };
@@ -142,7 +145,7 @@
          )}
  
          {/* Summary Cards */}
-         <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
            <Card>
              <CardHeader className="pb-2">
                <CardDescription className="flex items-center gap-2">
@@ -156,6 +159,19 @@
              </CardContent>
            </Card>
  
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription className="flex items-center gap-2">
+                <Timer className="h-4 w-4" />
+                Overtime Hours
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold">{totals.overtimeHours.toFixed(1)}</p>
+              <p className="text-sm text-muted-foreground">@ 1.5x rate</p>
+            </CardContent>
+          </Card>
+
            <Card>
              <CardHeader className="pb-2">
                <CardDescription className="flex items-center gap-2">
@@ -165,7 +181,7 @@
              </CardHeader>
              <CardContent>
                <p className="text-3xl font-bold">£{totals.grossPay.toFixed(2)}</p>
-               <p className="text-sm text-muted-foreground">total wages</p>
+              <p className="text-sm text-muted-foreground">inc. £{totals.overtimePay.toFixed(2)} OT</p>
              </CardContent>
            </Card>
  
@@ -207,8 +223,10 @@
                    <TableRow>
                      <TableHead>Staff Member</TableHead>
                      <TableHead className="text-right">Total Hours</TableHead>
+                      <TableHead className="text-right">Overtime</TableHead>
                      <TableHead className="text-right">Paid Breaks</TableHead>
                      <TableHead className="text-right">Rate (£/hr)</TableHead>
+                      <TableHead className="text-right">OT Pay</TableHead>
                      <TableHead className="text-right">Gross Pay</TableHead>
                      <TableHead className="text-right">Holiday Accrual</TableHead>
                    </TableRow>
@@ -233,12 +251,26 @@
                            <TableCell className="text-right font-mono">
                              {summary.totalHoursWorked.toFixed(2)}
                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {summary.overtimeHours > 0 ? (
+                                <span className="text-primary">{summary.overtimeHours.toFixed(2)}</span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
                            <TableCell className="text-right font-mono text-muted-foreground">
                              {summary.paidBreakHours.toFixed(2)}
                            </TableCell>
                            <TableCell className="text-right font-mono">
                              £{summary.hourlyRate.toFixed(2)}
                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {summary.overtimePay > 0 ? (
+                                <span className="text-primary">£{summary.overtimePay.toFixed(2)}</span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
                            <TableCell className="text-right font-mono font-medium">
                              £{summary.grossPay.toFixed(2)}
                            </TableCell>
@@ -259,8 +291,14 @@
                      <TableCell className="text-right font-mono">
                        {totals.hours.toFixed(2)}
                      </TableCell>
+                      <TableCell className="text-right font-mono text-primary">
+                        {totals.overtimeHours.toFixed(2)}
+                      </TableCell>
                      <TableCell />
                      <TableCell />
+                      <TableCell className="text-right font-mono text-primary">
+                        £{totals.overtimePay.toFixed(2)}
+                      </TableCell>
                      <TableCell className="text-right font-mono">
                        £{totals.grossPay.toFixed(2)}
                      </TableCell>

@@ -1,4 +1,4 @@
- import { Users, LayoutDashboard, Calendar, Clock, Settings, LogOut, Coffee, CalendarDays, PoundSterling } from 'lucide-react';
+import { Users, LayoutDashboard, Calendar, Clock, Settings, LogOut, Coffee, CalendarDays, PoundSterling, BarChart3 } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   Sidebar,
@@ -23,6 +23,7 @@ const navItems = [
   { title: 'Attendance', url: '/attendance', icon: Clock },
    { title: 'Leave', url: '/leave', icon: CalendarDays },
    { title: 'Payroll', url: '/payroll', icon: PoundSterling },
+  { title: 'Reports', url: '/reports', icon: BarChart3 },
   { title: 'Settings', url: '/settings', icon: Settings },
 ];
 

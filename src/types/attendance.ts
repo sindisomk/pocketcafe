@@ -55,8 +55,10 @@
    totalHoursWorked: number;
    paidBreakHours: number;
    regularHours: number;
+  overtimeHours: number;
    hourlyRate: number;
    grossPay: number;
+  overtimePay: number;
    holidayAccrual: number; // 12.07% for zero-hour contracts
  }
  
