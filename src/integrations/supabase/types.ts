@@ -378,6 +378,30 @@ export type Database = {
           },
         ]
       }
+      pin_verification_attempts: {
+        Row: {
+          attempt_count: number
+          client_ip: string
+          created_at: string
+          id: string
+          window_start: string
+        }
+        Insert: {
+          attempt_count?: number
+          client_ip: string
+          created_at?: string
+          id?: string
+          window_start?: string
+        }
+        Update: {
+          attempt_count?: number
+          client_ip?: string
+          created_at?: string
+          id?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       shifts: {
         Row: {
           created_at: string
@@ -587,6 +611,7 @@ export type Database = {
       }
     }
     Functions: {
+      cleanup_old_pin_attempts: { Args: never; Returns: undefined }
       cleanup_old_rate_limits: { Args: never; Returns: undefined }
       has_role: {
         Args: {

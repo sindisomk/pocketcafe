@@ -11,9 +11,60 @@ import * as bcrypt from "jsr:@da/bcrypt@1.0.1";
    action: "set" | "verify";
    pin: string;
    current_pin?: string;
- }
- 
- Deno.serve(async (req) => {
+}
+
+interface RateLimitRecord {
+  id: string;
+  attempt_count: number;
+}
+
+// Helper function to record verification attempts for rate limiting
+// deno-lint-ignore no-explicit-any
+async function recordVerificationAttempt(
+  supabase: any,
+  clientIP: string
+): Promise<void> {
+  const windowStart = new Date(Date.now() - 5 * 60 * 1000);
+  
+  // Check for existing window
+  const { data: existing } = await supabase
+    .from("pin_verification_attempts")
+    .select("id, attempt_count")
+    .eq("client_ip", clientIP)
+    .gte("window_start", windowStart.toISOString())
+    .order("window_start", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const record = existing as RateLimitRecord | null;
+
+  if (record) {
+    // Increment existing count
+    await supabase
+      .from("pin_verification_attempts")
+      .update({ attempt_count: record.attempt_count + 1 })
+      .eq("id", record.id);
+  } else {
+    // Create new window
+    await supabase
+      .from("pin_verification_attempts")
+      .insert({ 
+        client_ip: clientIP, 
+        attempt_count: 1, 
+        window_start: new Date().toISOString() 
+      });
+  }
+
+  // Cleanup old entries occasionally (1 in 10 chance)
+  if (Math.random() < 0.1) {
+    await supabase
+      .from("pin_verification_attempts")
+      .delete()
+      .lt("window_start", new Date(Date.now() - 10 * 60 * 1000).toISOString());
+  }
+}
+
+Deno.serve(async (req) => {
    // Handle CORS preflight
    if (req.method === "OPTIONS") {
      return new Response("ok", { headers: corsHeaders });
@@ -138,36 +189,81 @@ import * as bcrypt from "jsr:@da/bcrypt@1.0.1";
        );
      }
  
-     if (action === "verify") {
-       // No auth required - Kiosk use case
-       // Fetch all manager PIN hashes
-       const { data: pins, error: fetchError } = await supabaseAdmin
-         .from("manager_pins")
-         .select("user_id, pin_hash");
- 
-       if (fetchError || !pins || pins.length === 0) {
-         return new Response(
-           JSON.stringify({ valid: false, error: "No manager PINs configured" }),
-           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-         );
-       }
- 
-       // Compare against each hash (bcrypt.compare is timing-safe)
-       for (const pinRecord of pins) {
-          const isMatch = bcrypt.compareSync(pin, pinRecord.pin_hash);
-         if (isMatch) {
-           return new Response(
-             JSON.stringify({ valid: true, manager_id: pinRecord.user_id }),
-             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
-       }
- 
-       return new Response(
-         JSON.stringify({ valid: false }),
-         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-       );
-     }
+    if (action === "verify") {
+      // No auth required - Kiosk use case
+      // Rate limiting: Check for too many failed attempts from this request
+      const clientIP = req.headers.get("cf-connecting-ip") || 
+                       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+                       req.headers.get("x-real-ip") || 
+                       "unknown";
+      
+      // Check rate limit (5 attempts per 5 minutes per IP)
+      const windowStart = new Date(Date.now() - 5 * 60 * 1000);
+      const { data: rateCheck } = await supabaseAdmin
+        .from("pin_verification_attempts")
+        .select("attempt_count")
+        .eq("client_ip", clientIP)
+        .gte("window_start", windowStart.toISOString())
+        .order("window_start", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (rateCheck && rateCheck.attempt_count >= 5) {
+        return new Response(
+          JSON.stringify({ valid: false, error: "Too many attempts. Please wait 5 minutes." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Fetch all manager PIN hashes
+      const { data: pins, error: fetchError } = await supabaseAdmin
+        .from("manager_pins")
+        .select("user_id, pin_hash");
+
+      // Dummy hash for constant-time comparison when no PINs exist
+      const DUMMY_HASH = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+
+      if (fetchError || !pins || pins.length === 0) {
+        // Perform dummy comparison to prevent timing leak
+        bcrypt.compareSync(pin, DUMMY_HASH);
+        await recordVerificationAttempt(supabaseAdmin, clientIP);
+        return new Response(
+          JSON.stringify({ valid: false, error: "No manager PINs configured" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // CRITICAL: Compare against ALL hashes without early return (constant-time)
+      let matchedUserId: string | null = null;
+      for (const pinRecord of pins) {
+        const isMatch = bcrypt.compareSync(pin, pinRecord.pin_hash);
+        if (isMatch && !matchedUserId) {
+          matchedUserId = pinRecord.user_id;
+        }
+        // Continue comparing ALL hashes to ensure constant timing
+      }
+
+      if (matchedUserId) {
+        // Reset rate limit on successful verification
+        await supabaseAdmin
+          .from("pin_verification_attempts")
+          .delete()
+          .eq("client_ip", clientIP);
+        
+        return new Response(
+          JSON.stringify({ valid: true, manager_id: matchedUserId }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Record failed attempt
+      await recordVerificationAttempt(supabaseAdmin, clientIP);
+
+      return new Response(
+        JSON.stringify({ valid: false }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
  
      return new Response(
        JSON.stringify({ error: "Invalid action" }),
