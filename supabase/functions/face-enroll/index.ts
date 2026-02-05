@@ -11,10 +11,42 @@
  const MAX_RETRIES = 3;
  const INITIAL_BACKOFF_MS = 1000;
  
- interface EnrollRequest {
-   staffId: string;
-   imageBase64: string;
- }
+interface EnrollRequest {
+  staffId: string;
+  imageBase64: string;
+}
+
+// Image validation limits (same as face-search)
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB max
+
+// Validate base64 image data
+function validateImageData(imageBase64: string): { valid: boolean; error?: string } {
+  if (!imageBase64) {
+    return { valid: false, error: "imageBase64 is required" };
+  }
+
+  // Check if it's valid base64 format
+  if (typeof imageBase64 !== 'string') {
+    return { valid: false, error: "imageBase64 must be a string" };
+  }
+
+  // Remove data URL prefix if present
+  const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+
+  // Estimate decoded size (base64 is ~4/3 of original)
+  const estimatedSize = Math.ceil(base64Data.length * 0.75);
+  if (estimatedSize > MAX_IMAGE_SIZE_BYTES) {
+    return { valid: false, error: `Image too large. Maximum size is ${MAX_IMAGE_SIZE_BYTES / 1024 / 1024}MB` };
+  }
+
+  // Basic validation that it looks like base64
+  const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
+  if (!base64Regex.test(base64Data)) {
+    return { valid: false, error: "Invalid base64 image data" };
+  }
+
+  return { valid: true };
+}
  
  // Helper function to make Face++ API requests with retry logic
  async function facePlusPlusRequest(
@@ -87,14 +119,23 @@
  
      console.log(`[face-enroll] Authenticated user: ${claimsData.user.id}`);
  
-     const { staffId, imageBase64 }: EnrollRequest = await req.json();
- 
-     if (!staffId || !imageBase64) {
-       return new Response(
-         JSON.stringify({ success: false, error: "staffId and imageBase64 are required" }),
-         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-       );
-     }
+      const { staffId, imageBase64 }: EnrollRequest = await req.json();
+
+      if (!staffId) {
+        return new Response(
+          JSON.stringify({ success: false, error: "staffId is required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Validate image data (size, format)
+      const validation = validateImageData(imageBase64);
+      if (!validation.valid) {
+        return new Response(
+          JSON.stringify({ success: false, error: validation.error }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
  
      console.log(`[face-enroll] Enrolling face for staff: ${staffId}`);
  
