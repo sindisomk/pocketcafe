@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Search, Plus, Users } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { StaffCard } from './StaffCard';
 import { StaffCardSkeleton } from './StaffCardSkeleton';
 import { StaffDetailSheet } from './StaffDetailSheet';
+import { StaffFormDialog } from './StaffFormDialog';
 import { useStaff } from '@/hooks/useStaff';
 import { useAuth } from '@/hooks/useAuth';
 import { StaffProfile } from '@/types/staff';
@@ -15,6 +16,8 @@ export function StaffDirectory() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStaff, setSelectedStaff] = useState<StaffProfile | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [formDialogOpen, setFormDialogOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<StaffProfile | null>(null);
 
   const filteredStaff = useMemo(() => {
     if (!searchQuery.trim()) return staff;
@@ -31,6 +34,17 @@ export function StaffDirectory() {
     setSelectedStaff(staffMember);
     setSheetOpen(true);
   };
+
+  const handleAddStaff = useCallback(() => {
+    setEditingStaff(null);
+    setFormDialogOpen(true);
+  }, []);
+
+  const handleEditStaff = useCallback((staffMember: StaffProfile) => {
+    setEditingStaff(staffMember);
+    setFormDialogOpen(true);
+    setSheetOpen(false);
+  }, []);
 
   if (isError) {
     return (
@@ -58,10 +72,9 @@ export function StaffDirectory() {
         </div>
 
         {isAdmin && (
-          <Button className="gap-2" disabled title="Coming soon">
+          <Button className="gap-2" onClick={handleAddStaff}>
             <Plus className="h-4 w-4" />
             Add Staff
-            {/* TODO: Implement Add Staff dialog in Phase 2 */}
           </Button>
         )}
       </div>
@@ -115,6 +128,14 @@ export function StaffDirectory() {
         staff={selectedStaff}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+        onEdit={handleEditStaff}
+      />
+
+      {/* Add/Edit Dialog */}
+      <StaffFormDialog
+        open={formDialogOpen}
+        onOpenChange={setFormDialogOpen}
+        staff={editingStaff}
       />
     </div>
   );
