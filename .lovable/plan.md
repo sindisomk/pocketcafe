@@ -1,543 +1,383 @@
 
 
-## Lateness & Absenteeism Tracking Implementation Plan
+## Missing Features & Bug Fixes Implementation Plan
 
-### Overview
-
-This plan adds comprehensive lateness and absenteeism tracking to PocketCafe, including automatic detection, real-time alerts, reporting, and manager dashboard indicators.
+This plan addresses four distinct issues reported:
+1. **Missing Leave Balances** - No leave balance tracking for staff
+2. **Missing Manager Notifications** - No notification system for managers
+3. **Kiosk Sleep/Wake Mode** - No power-saving mode for kiosk
+4. **Dashboard Disappearing** - Console warning about forwardRef in ShiftSlot
 
 ---
 
-## Part 1: Database Schema Changes
+## Part 1: Leave Balance Tracking
 
-### 1.1 Create Settings Table
-Persist global work hours settings so they apply system-wide:
+### Root Cause Analysis
+The database has no `leave_balances` table. The PRD specifies that zero-hour staff accrue holiday at **12.07%** of hours worked, but this calculation isn't tracked anywhere. Staff profiles only mention the accrual rate in the UI text but don't store or calculate actual balances.
 
+### Database Schema
+
+**Create `leave_balances` table:**
 ```sql
-CREATE TABLE public.app_settings (
+CREATE TABLE public.leave_balances (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  setting_key text UNIQUE NOT NULL,
-  setting_value jsonb NOT NULL,
+  staff_id uuid UNIQUE NOT NULL REFERENCES staff_profiles(id) ON DELETE CASCADE,
+  total_entitlement_hours numeric(10,2) DEFAULT 0,  -- Annual entitlement
+  used_hours numeric(10,2) DEFAULT 0,               -- Hours used
+  accrued_hours numeric(10,2) DEFAULT 0,            -- For zero-hour: 12.07% of worked hours
+  year integer DEFAULT EXTRACT(YEAR FROM now()),
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
 
 -- Enable RLS
-ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.leave_balances ENABLE ROW LEVEL SECURITY;
 
--- Only admins can manage settings
-CREATE POLICY "Admins can manage settings" ON public.app_settings
-  FOR ALL USING (is_admin());
-
--- Managers can view settings
-CREATE POLICY "Managers can view settings" ON public.app_settings
-  FOR SELECT USING (is_manager());
-```
-
-**Default settings to insert:**
-```sql
-INSERT INTO app_settings (setting_key, setting_value) VALUES
-  ('work_hours', '{
-    "latenessGraceMinutes": 5,
-    "noShowThresholdMinutes": 30,
-    "paidBreakMinutes": 30,
-    "minRestBetweenShifts": 11,
-    "maxWeeklyHours": 48,
-    "autoClockOutEnabled": true,
-    "autoClockOutHours": 12
-  }');
-```
-
-### 1.2 Add Lateness Columns to Attendance Records
-Track lateness details on each attendance record:
-
-```sql
-ALTER TABLE public.attendance_records
-  ADD COLUMN scheduled_start_time time,
-  ADD COLUMN is_late boolean DEFAULT false,
-  ADD COLUMN late_minutes integer DEFAULT 0;
-```
-
-### 1.3 Create No-Show Records Table
-Track staff who were scheduled but never clocked in:
-
-```sql
-CREATE TABLE public.no_show_records (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  staff_id uuid NOT NULL REFERENCES staff_profiles(id) ON DELETE CASCADE,
-  shift_id uuid NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
-  shift_date date NOT NULL,
-  scheduled_start_time time NOT NULL,
-  detected_at timestamptz DEFAULT now(),
-  resolved boolean DEFAULT false,
-  resolved_by uuid,
-  resolved_at timestamptz,
-  resolution_notes text,
-  created_at timestamptz DEFAULT now()
-);
-
--- Enable RLS
-ALTER TABLE public.no_show_records ENABLE ROW LEVEL SECURITY;
-
--- Policies for managers/admins
-CREATE POLICY "Admins can manage no-shows" ON public.no_show_records
-  FOR ALL USING (is_admin());
-
-CREATE POLICY "Managers can manage no-shows" ON public.no_show_records
-  FOR ALL USING (is_manager());
-
--- Staff can view their own no-show records
-CREATE POLICY "Staff can view own no-shows" ON public.no_show_records
+-- Policies
+CREATE POLICY "Staff can view own balance" ON public.leave_balances
   FOR SELECT USING (staff_id IN (
     SELECT id FROM staff_profiles WHERE user_id = auth.uid()
   ));
 
--- Enable realtime for no-shows
-ALTER PUBLICATION supabase_realtime ADD TABLE public.no_show_records;
+CREATE POLICY "Managers can view all balances" ON public.leave_balances
+  FOR SELECT USING (is_manager());
+
+CREATE POLICY "Admins can manage balances" ON public.leave_balances
+  FOR ALL USING (is_admin());
+
+-- Enable realtime
+ALTER PUBLICATION supabase_realtime ADD TABLE public.leave_balances;
+```
+
+### Implementation Details
+
+**New File: `src/hooks/useLeaveBalance.ts`**
+```typescript
+export interface LeaveBalance {
+  id: string;
+  staff_id: string;
+  total_entitlement_hours: number;
+  used_hours: number;
+  accrued_hours: number;
+  year: number;
+}
+
+export function useLeaveBalance(staffId?: string) {
+  // Query leave balances
+  // Calculate available = (total_entitlement + accrued) - used
+  // For zero-hour staff: accrued = total_hours_worked * 0.1207
+  return {
+    balance,
+    availableHours,
+    updateBalance,
+    recalculateAccrual,  // Recalculate based on attendance records
+  };
+}
+```
+
+**Update `src/pages/Leave.tsx`:**
+- Add summary card showing staff's leave balance before request list
+- Show available days/hours when submitting new request
+- Display balance depletion warning if request would exceed available leave
+
+**Update `src/components/staff/StaffDetailSheet.tsx`:**
+- Add "Leave Balance" section showing:
+  - Annual entitlement (e.g., 28 days for salaried)
+  - Days used this year
+  - Days remaining
+  - For zero-hour: Accrued hours based on 12.07% calculation
+
+**Update `src/hooks/useLeaveRequests.ts`:**
+- When leave request is approved, deduct from `used_hours`
+- Validate that staff has sufficient balance before approving
+
+### Accrual Calculation Logic
+
+For zero-hour staff, calculate accrued leave from attendance:
+```typescript
+// In src/lib/payroll.ts or new utility
+export function calculateAccruedLeave(
+  hoursWorked: number,
+  accrualRate: number = 0.1207  // 12.07%
+): number {
+  return hoursWorked * accrualRate;
+}
+
+// When clock-out happens or payroll is calculated:
+// Update leave_balances.accrued_hours = total_hours_worked * 0.1207
 ```
 
 ---
 
-## Part 2: Lateness Detection Logic
+## Part 2: Manager Notifications System
 
-### 2.1 Create Lateness Calculator Utility
-New file: `src/lib/attendance.ts`
+### Root Cause Analysis
+No notification infrastructure exists. The PRD mentions managers should receive:
+- Alerts when staff clock in late
+- Alerts when breaks exceed 30 minutes
+- Alerts for no-shows
+- Shift publishing notifications
 
+### Database Schema
+
+**Create `notifications` table:**
+```sql
+CREATE TABLE public.notifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  recipient_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  type text NOT NULL,  -- 'late_arrival', 'extended_break', 'no_show', 'shift_published', 'leave_request'
+  title text NOT NULL,
+  message text,
+  related_staff_id uuid REFERENCES staff_profiles(id),
+  related_record_id uuid,  -- ID of related record (attendance, leave request, etc.)
+  read_at timestamptz,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Indexes
+CREATE INDEX idx_notifications_recipient ON public.notifications(recipient_id);
+CREATE INDEX idx_notifications_unread ON public.notifications(recipient_id) WHERE read_at IS NULL;
+
+-- Enable RLS
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own notifications" ON public.notifications
+  FOR SELECT USING (recipient_id = auth.uid());
+
+CREATE POLICY "Users can update own notifications" ON public.notifications
+  FOR UPDATE USING (recipient_id = auth.uid());
+
+CREATE POLICY "System can create notifications" ON public.notifications
+  FOR INSERT WITH CHECK (true);
+
+-- Enable realtime
+ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+```
+
+### Implementation Details
+
+**New File: `src/hooks/useNotifications.ts`**
 ```typescript
-interface LatenessResult {
-  isLate: boolean;
-  lateMinutes: number;
-  graceApplied: boolean;
+export interface Notification {
+  id: string;
+  type: 'late_arrival' | 'extended_break' | 'no_show' | 'shift_published' | 'leave_request';
+  title: string;
+  message: string | null;
+  related_staff_id: string | null;
+  read_at: string | null;
+  created_at: string;
 }
 
-/**
- * Calculate if a clock-in is late compared to scheduled shift start
- */
-export function calculateLateness(
-  clockInTime: Date,
-  scheduledStartTime: string,  // e.g., "08:00"
-  shiftDate: string,           // e.g., "2026-02-05"
-  graceMinutes: number = 5
-): LatenessResult {
-  // Build scheduled datetime
-  const scheduledDateTime = new Date(`${shiftDate}T${scheduledStartTime}`);
-  
-  // Calculate difference in minutes
-  const diffMs = clockInTime.getTime() - scheduledDateTime.getTime();
-  const diffMinutes = Math.floor(diffMs / 60000);
-  
-  // Within grace period = not late
-  if (diffMinutes <= graceMinutes) {
-    return { isLate: false, lateMinutes: 0, graceApplied: diffMinutes > 0 };
-  }
-  
-  // Late
+export function useNotifications() {
+  // Query unread notifications for current user
+  // Mark as read
+  // Subscribe to realtime updates
   return {
-    isLate: true,
-    lateMinutes: diffMinutes,
-    graceApplied: false,
+    notifications,
+    unreadCount,
+    markAsRead,
+    markAllAsRead,
   };
-}
-
-/**
- * Check if staff is a no-show based on threshold
- */
-export function isNoShow(
-  scheduledStartTime: string,
-  shiftDate: string,
-  currentTime: Date,
-  thresholdMinutes: number = 30
-): boolean {
-  const scheduledDateTime = new Date(`${shiftDate}T${scheduledStartTime}`);
-  const diffMs = currentTime.getTime() - scheduledDateTime.getTime();
-  const diffMinutes = Math.floor(diffMs / 60000);
-  
-  return diffMinutes >= thresholdMinutes;
 }
 ```
 
-### 2.2 Update useAttendance Hook
-Modify clock-in mutation to calculate lateness:
+**New File: `src/components/layout/NotificationBell.tsx`**
+- Bell icon in header with unread badge
+- Dropdown showing recent notifications
+- Click to mark as read and navigate to relevant page
 
+**Update `src/components/layout/AppLayout.tsx`:**
+- Add NotificationBell to header between SidebarTrigger and flex-1
+
+**Create Notification Triggers:**
+
+Update these hooks to create notifications:
+
+1. **`useAttendance.ts` - clockIn mutation:**
 ```typescript
-const clockIn = useMutation({
-  mutationFn: async ({ staffId, faceConfidence, overrideBy, overridePinUsed, scheduledStartTime, shiftDate }: ClockInParams) => {
-    // Calculate lateness
-    const clockInTime = new Date();
-    const graceMinutes = 5; // TODO: Fetch from settings
-    const lateness = calculateLateness(clockInTime, scheduledStartTime, shiftDate, graceMinutes);
-    
-    const { data, error } = await supabase
-      .from('attendance_records')
-      .insert({
-        staff_id: staffId,
-        status: 'clocked_in',
-        face_match_confidence: faceConfidence,
-        override_by: overrideBy,
-        override_pin_used: overridePinUsed ?? false,
-        scheduled_start_time: scheduledStartTime,
-        is_late: lateness.isLate,
-        late_minutes: lateness.lateMinutes,
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
-  },
-  // ... rest of mutation config
+// After successful clock-in, if is_late is true:
+// Create notification for all managers:
+await supabase.from('notifications').insert({
+  recipient_id: managerId,
+  type: 'late_arrival',
+  title: `${staffName} clocked in late`,
+  message: `${lateMinutes} minutes late for ${shiftType} shift`,
+  related_staff_id: staffId,
+  related_record_id: attendanceId,
 });
 ```
 
+2. **`useNoShowDetection.ts`:**
+```typescript
+// When no-show is detected:
+// Create notification for all managers
+```
+
+3. **`useAttendance.ts` - break monitoring:**
+```typescript
+// Background check: if break exceeds 30 minutes
+// Create 'extended_break' notification
+```
+
+4. **`useLeaveRequests.ts` - createLeaveRequest:**
+```typescript
+// When new leave request is submitted:
+// Notify all managers
+```
+
+**Update `src/pages/Index.tsx` (Dashboard):**
+- Add "Recent Alerts" card showing last 5 notifications
+- Link to full notifications page if needed
+
 ---
 
-## Part 3: No-Show Detection System
+## Part 3: Kiosk Sleep/Wake Mode
 
-### 3.1 Create No-Show Detection Hook
-New file: `src/hooks/useNoShowDetection.ts`
+### Requirements
+- Kiosk should enter sleep mode after inactivity (e.g., 5 minutes)
+- Sleep mode dims screen, shows clock/date, stops camera
+- Any touch/motion wakes the kiosk
+- Reduces power consumption and camera wear
 
-This hook runs periodically to check for staff who should have clocked in but haven't:
+### Implementation Details
 
+**Update `src/pages/Kiosk.tsx`:**
 ```typescript
-export function useNoShowDetection() {
-  const queryClient = useQueryClient();
+const SLEEP_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+const [isSleeping, setIsSleeping] = useState(false);
+const sleepTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+// Reset sleep timer on any interaction
+const resetSleepTimer = useCallback(() => {
+  if (sleepTimerRef.current) {
+    clearTimeout(sleepTimerRef.current);
+  }
+  setIsSleeping(false);
+  sleepTimerRef.current = setTimeout(() => {
+    setIsSleeping(true);
+  }, SLEEP_TIMEOUT_MS);
+}, []);
+
+useEffect(() => {
+  // Listen for any interaction
+  const events = ['mousedown', 'touchstart', 'keydown', 'mousemove'];
+  events.forEach(event => document.addEventListener(event, resetSleepTimer));
   
-  // Detect no-shows for today's shifts
-  const detectNoShows = useCallback(async () => {
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const now = new Date();
-    
-    // Get today's shifts
-    const { data: shifts } = await supabase
-      .from('shifts')
-      .select('id, staff_id, shift_date, start_time')
-      .eq('shift_date', today);
-    
-    // Get today's attendance
-    const { data: attendance } = await supabase
-      .from('attendance_records')
-      .select('staff_id')
-      .gte('clock_in_time', `${today}T00:00:00`)
-      .lte('clock_in_time', `${today}T23:59:59`);
-    
-    const clockedInStaffIds = new Set(attendance?.map(a => a.staff_id));
-    
-    // Find shifts where staff hasn't clocked in and is past threshold
-    for (const shift of shifts ?? []) {
-      if (clockedInStaffIds.has(shift.staff_id)) continue;
-      
-      if (isNoShow(shift.start_time, shift.shift_date, now, 30)) {
-        // Check if already recorded
-        const { data: existing } = await supabase
-          .from('no_show_records')
-          .select('id')
-          .eq('shift_id', shift.id)
-          .eq('shift_date', today)
-          .maybeSingle();
-        
-        if (!existing) {
-          // Create no-show record
-          await supabase.from('no_show_records').insert({
-            staff_id: shift.staff_id,
-            shift_id: shift.id,
-            shift_date: shift.shift_date,
-            scheduled_start_time: shift.start_time,
-          });
-        }
-      }
-    }
-  }, []);
+  // Start initial timer
+  resetSleepTimer();
   
-  // Run every 5 minutes
+  return () => {
+    events.forEach(event => document.removeEventListener(event, resetSleepTimer));
+    if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
+  };
+}, [resetSleepTimer]);
+```
+
+**New Component: `src/components/kiosk/SleepOverlay.tsx`**
+```tsx
+export function SleepOverlay({ onWake }: { onWake: () => void }) {
+  const [time, setTime] = useState(new Date());
+  
   useEffect(() => {
-    detectNoShows(); // Initial check
-    const interval = setInterval(detectNoShows, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [detectNoShows]);
-  
-  return { detectNoShows };
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div 
+      className="fixed inset-0 z-50 bg-sidebar flex flex-col items-center justify-center cursor-pointer"
+      onClick={onWake}
+      onTouchStart={onWake}
+    >
+      <Coffee className="h-24 w-24 text-primary mb-8 animate-pulse" />
+      <p className="text-6xl font-bold text-sidebar-foreground font-mono">
+        {format(time, 'HH:mm')}
+      </p>
+      <p className="text-2xl text-sidebar-foreground/70 mt-4">
+        {format(time, 'EEEE, MMMM d, yyyy')}
+      </p>
+      <p className="text-lg text-sidebar-foreground/50 mt-8">
+        Tap anywhere to wake
+      </p>
+    </div>
+  );
 }
 ```
 
-### 3.2 Create No-Shows Query Hook
-New file: `src/hooks/useNoShows.ts`
-
-```typescript
-export function useNoShows(date?: Date) {
-  const targetDate = date || new Date();
-  const dateStr = format(targetDate, 'yyyy-MM-dd');
-  
-  return useQuery({
-    queryKey: ['no-shows', dateStr],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('no_show_records')
-        .select(`
-          *,
-          staff_profiles (id, name, profile_photo_url, role),
-          shifts (shift_type, start_time, end_time)
-        `)
-        .eq('shift_date', dateStr)
-        .eq('resolved', false)
-        .order('detected_at', { ascending: false });
-      
-      if (error) throw error;
-      return data;
-    },
-  });
-}
+**Update `src/pages/Kiosk.tsx` render:**
+```tsx
+return (
+  <div className="min-h-screen bg-sidebar text-sidebar-foreground">
+    {isSleeping && <SleepOverlay onWake={resetSleepTimer} />}
+    
+    {/* Only render camera when not sleeping */}
+    {!isSleeping && (
+      <CameraFeed ... />
+    )}
+    
+    {/* Rest of kiosk UI */}
+  </div>
+);
 ```
+
+**Update `src/components/kiosk/CameraFeed.tsx`:**
+- Accept optional `enabled` prop
+- Stop camera stream when `enabled` is false
+- Restart camera when `enabled` becomes true
 
 ---
 
-## Part 4: Settings Persistence
+## Part 4: ShiftSlot forwardRef Warning Fix
 
-### 4.1 Create Settings Hook
-New file: `src/hooks/useAppSettings.ts`
+### Root Cause Analysis
+Console shows:
+```
+Warning: Function components cannot be given refs. 
+Check the render method of `DayColumn`.
+at ShiftSlot
+```
 
+This happens because `useDroppable` from dnd-kit passes a ref to ShiftSlot via `setNodeRef`, but ShiftSlot is a function component that doesn't forward refs.
+
+### Fix
+
+**Update `src/components/scheduler/ShiftSlot.tsx`:**
 ```typescript
-interface WorkHoursSettings {
-  latenessGraceMinutes: number;
-  noShowThresholdMinutes: number;
-  paidBreakMinutes: number;
-  minRestBetweenShifts: number;
-  maxWeeklyHours: number;
-  autoClockOutEnabled: boolean;
-  autoClockOutHours: number;
-}
+import { forwardRef } from 'react';
 
-export function useWorkHoursSettings() {
-  const queryClient = useQueryClient();
+export const ShiftSlot = forwardRef<HTMLDivElement, ShiftSlotProps>(function ShiftSlot({
+  date,
+  shiftType,
+  shifts,
+  hasRestWarning,
+  onRemoveShift,
+  isLoading,
+}, externalRef) {
+  const slotId = `${date.toISOString()}-${shiftType}`;
   
-  const query = useQuery({
-    queryKey: ['settings', 'work_hours'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('setting_value')
-        .eq('setting_key', 'work_hours')
-        .maybeSingle();
-      
-      if (error) throw error;
-      return (data?.setting_value as WorkHoursSettings) ?? DEFAULT_WORK_HOURS;
-    },
+  const { setNodeRef, isOver } = useDroppable({
+    id: slotId,
+    data: { date, shiftType },
   });
-  
-  const updateSettings = useMutation({
-    mutationFn: async (settings: Partial<WorkHoursSettings>) => {
-      const { error } = await supabase
-        .from('app_settings')
-        .upsert({
-          setting_key: 'work_hours',
-          setting_value: { ...query.data, ...settings },
-        });
-      
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings', 'work_hours'] });
-      toast.success('Settings saved');
-    },
-  });
-  
-  return {
-    settings: query.data,
-    isLoading: query.isLoading,
-    updateSettings,
+
+  // Combine refs
+  const combinedRef = (node: HTMLDivElement | null) => {
+    setNodeRef(node);
+    if (typeof externalRef === 'function') {
+      externalRef(node);
+    } else if (externalRef) {
+      externalRef.current = node;
+    }
   };
-}
-```
 
-### 4.2 Update WorkHoursSettings Component
-Connect the UI to the database:
-
-```typescript
-// Replace useState with useWorkHoursSettings hook
-const { settings, isLoading, updateSettings } = useWorkHoursSettings();
-
-const handleSave = () => {
-  updateSettings.mutate(localConfig);
-};
-```
-
----
-
-## Part 5: UI Updates
-
-### 5.1 Update TodayRoster
-Add "Late" and "No-Show" status indicators:
-
-```typescript
-// Add new status types
-type RosterStatus = 'not_arrived' | 'late' | 'clocked_in' | 'on_break' | 'clocked_out' | 'no_show';
-
-// Update getStatusBadge
-const getStatusBadge = (status: RosterStatus, lateMinutes?: number) => {
-  switch (status) {
-    case 'late':
-      return (
-        <Badge className="bg-destructive text-destructive-foreground">
-          Late ({lateMinutes}m)
-        </Badge>
-      );
-    case 'no_show':
-      return <Badge variant="destructive">No-Show</Badge>;
-    // ... existing cases
-  }
-};
-```
-
-### 5.2 Update Attendance Page
-Add late/no-show indicators and filtering:
-
-```typescript
-// Add summary cards
-const lateCount = attendance.filter(a => a.is_late).length;
-const noShowCount = noShows?.length ?? 0;
-
-// Add Late indicator on attendance records
-{record.is_late && (
-  <Badge variant="destructive" className="ml-2">
-    {record.late_minutes}m late
-  </Badge>
-)}
-
-// Add No-Shows section
-<Card>
-  <CardHeader>
-    <CardTitle className="flex items-center gap-2">
-      <AlertTriangle className="h-5 w-5 text-destructive" />
-      No-Shows ({noShowCount})
-    </CardTitle>
-  </CardHeader>
-  <CardContent>
-    {/* List of no-show staff with resolve action */}
-  </CardContent>
-</Card>
-```
-
-### 5.3 Update Dashboard
-Add late arrivals and no-show alerts:
-
-```typescript
-// Add to quick stats grid
-<Card>
-  <CardHeader>
-    <CardTitle className="text-sm font-medium text-muted-foreground">
-      Late Arrivals
-    </CardTitle>
-    <AlertTriangle className="h-4 w-4 text-warning" />
-  </CardHeader>
-  <CardContent>
-    <div className="text-2xl font-bold text-warning">{lateCount}</div>
-    <p className="text-xs text-muted-foreground">Today</p>
-  </CardContent>
-</Card>
-
-<Card>
-  <CardHeader>
-    <CardTitle className="text-sm font-medium text-muted-foreground">
-      No-Shows
-    </CardTitle>
-    <AlertTriangle className="h-4 w-4 text-destructive" />
-  </CardHeader>
-  <CardContent>
-    <div className="text-2xl font-bold text-destructive">{noShowCount}</div>
-    <p className="text-xs text-muted-foreground">Unresolved</p>
-  </CardContent>
-</Card>
-```
-
-### 5.4 Update Kiosk to Pass Shift Info
-When clocking in, include the scheduled shift time:
-
-```typescript
-// In handleQuickAction:
-case 'clock_in':
-  // Find the staff's shift for today
-  const todayShift = shifts.find(s => s.staff_id === staffId);
-  
-  await clockIn.mutateAsync({
-    staffId,
-    faceConfidence: confidence,
-    scheduledStartTime: todayShift?.start_time,
-    shiftDate: format(new Date(), 'yyyy-MM-dd'),
-  });
-  break;
-```
-
----
-
-## Part 6: Real-Time Updates
-
-### 6.1 Update RealtimeProvider
-Add subscription for no-show records:
-
-```typescript
-.on(
-  'postgres_changes',
-  {
-    event: '*',
-    schema: 'public',
-    table: 'no_show_records',
-  },
-  (payload) => {
-    console.log('[Realtime] no_show_records change:', payload.eventType);
-    setLastSync(new Date());
-    queryClient.invalidateQueries({ 
-      predicate: (query) => {
-        const key = query.queryKey;
-        return Array.isArray(key) && key[0] === 'no-shows';
-      }
-    });
-  }
-)
-```
-
----
-
-## Part 7: Reporting Integration
-
-### 7.1 Add Lateness to Payroll Summary
-Update PayrollSummary type and calculation:
-
-```typescript
-// In types/attendance.ts
-export interface PayrollSummary {
-  // ... existing fields
-  lateCount: number;
-  totalLateMinutes: number;
-}
-
-// In lib/payroll.ts
-export function generatePayrollSummary(...) {
-  // Count late arrivals
-  const lateRecords = staffRecords.filter(r => r.is_late);
-  const lateCount = lateRecords.length;
-  const totalLateMinutes = lateRecords.reduce((sum, r) => sum + (r.late_minutes ?? 0), 0);
-  
-  return {
-    // ... existing fields
-    lateCount,
-    totalLateMinutes,
-  };
-}
-```
-
-### 7.2 Add Lateness Column to Payroll CSV Export
-
-```typescript
-const headers = [
-  // ... existing headers
-  'Late Arrivals',
-  'Total Late Minutes',
-];
-
-const rows = summaries.map((s) => [
-  // ... existing fields
-  s.lateCount.toString(),
-  s.totalLateMinutes.toString(),
-]);
+  return (
+    <div
+      ref={combinedRef}
+      // ... rest unchanged
+    />
+  );
+});
 ```
 
 ---
@@ -547,87 +387,97 @@ const rows = summaries.map((s) => [
 ### Database Changes
 | Change | Description |
 |--------|-------------|
-| New `app_settings` table | Persist global settings like grace periods |
-| Alter `attendance_records` | Add `scheduled_start_time`, `is_late`, `late_minutes` columns |
-| New `no_show_records` table | Track missed shifts |
+| New `leave_balances` table | Track staff leave entitlement, used, and accrued hours |
+| New `notifications` table | Store manager alerts and notifications |
+| Enable realtime on both tables | Push updates to connected clients |
 
 ### New Files
 | File | Purpose |
 |------|---------|
-| `src/lib/attendance.ts` | Lateness calculation utilities |
-| `src/hooks/useAppSettings.ts` | Settings persistence hook |
-| `src/hooks/useNoShowDetection.ts` | Automatic no-show detection |
-| `src/hooks/useNoShows.ts` | Query no-show records |
+| `src/hooks/useLeaveBalance.ts` | Query and manage leave balances |
+| `src/hooks/useNotifications.ts` | Query and manage notifications |
+| `src/components/layout/NotificationBell.tsx` | Header notification indicator with dropdown |
+| `src/components/kiosk/SleepOverlay.tsx` | Sleep mode display for kiosk |
 
 ### Modified Files
 | File | Changes |
 |------|---------|
-| `src/hooks/useAttendance.ts` | Calculate lateness on clock-in |
-| `src/components/settings/WorkHoursSettings.tsx` | Connect to database |
-| `src/components/kiosk/TodayRoster.tsx` | Add late/no-show status badges |
-| `src/pages/Attendance.tsx` | Show late indicators, no-show section |
-| `src/pages/Index.tsx` | Add late/no-show stats cards |
-| `src/pages/Kiosk.tsx` | Pass shift info to clock-in |
-| `src/providers/RealtimeProvider.tsx` | Subscribe to no-show changes |
-| `src/lib/payroll.ts` | Include lateness in payroll reports |
-| `src/types/attendance.ts` | Add lateness fields to types |
+| `src/pages/Leave.tsx` | Add leave balance summary card |
+| `src/components/staff/StaffDetailSheet.tsx` | Add leave balance section |
+| `src/hooks/useLeaveRequests.ts` | Validate balance on approval, deduct on approve |
+| `src/hooks/useAttendance.ts` | Create notifications for late arrivals |
+| `src/hooks/useNoShowDetection.ts` | Create notifications for no-shows |
+| `src/components/layout/AppLayout.tsx` | Add NotificationBell to header |
+| `src/pages/Index.tsx` | Add recent alerts section |
+| `src/pages/Kiosk.tsx` | Add sleep/wake mode logic |
+| `src/components/kiosk/CameraFeed.tsx` | Add enabled prop to control camera |
+| `src/components/scheduler/ShiftSlot.tsx` | Wrap with forwardRef |
+| `src/providers/RealtimeProvider.tsx` | Subscribe to leave_balances and notifications |
+| `src/lib/queryKeys.ts` | Add keys for leaveBalances and notifications |
 
 ---
 
-## Data Flow
+## Data Flow Diagrams
 
+### Leave Balance Flow
 ```text
-Staff approaches Kiosk
+Staff works shift → Clock out recorded
         ↓
-Face recognized → Find scheduled shift
+For zero-hour: Calculate accrual (hours × 12.07%)
         ↓
-Clock In with scheduled_start_time
+Update leave_balances.accrued_hours
         ↓
-Calculate lateness (clock_in_time - scheduled_start_time - grace)
+Staff submits leave request
         ↓
-Insert attendance_record with is_late, late_minutes
+System validates: requested_days ≤ available_balance
         ↓
-Realtime updates → Dashboard shows "Late Arrivals: 1"
-                 → Attendance page shows late badge
-                 → TodayRoster shows "Late (12m)"
+Manager approves → leave_balances.used_hours += approved_days
+        ↓
+Leave.tsx shows updated balance
+```
 
-═══════════════════════════════════════════════════
+### Notification Flow
+```text
+Late clock-in detected
+        ↓
+Get all manager user_ids from user_roles
+        ↓
+Insert notification for each manager
+        ↓
+Realtime pushes to RealtimeProvider
+        ↓
+NotificationBell badge updates
+        ↓
+Manager clicks → marks as read → navigates to Attendance
+```
 
-Background Process (every 5 min):
+### Kiosk Sleep/Wake Flow
+```text
+Last interaction timestamp
         ↓
-Check today's shifts vs attendance
+5 min inactivity → isSleeping = true
         ↓
-Staff scheduled at 08:00 but no clock-in by 08:30?
+SleepOverlay renders (camera stops)
         ↓
-Create no_show_record
+Touch/click detected → resetSleepTimer()
         ↓
-Realtime updates → Dashboard shows "No-Shows: 1"
-                 → Attendance page shows no-show alert
-                 → Manager can resolve with notes
+isSleeping = false → camera restarts
 ```
 
 ---
 
-## Expected Outcomes
-
-1. **Lateness Tracking**: Every clock-in compares against scheduled shift start time
-2. **Grace Period**: Configurable (default 5 min) - arrivals within grace are not marked late
-3. **No-Show Detection**: Automatic detection 30+ minutes after shift start
-4. **Manager Visibility**: Dashboard shows late/no-show counts in real-time
-5. **Attendance Records**: Visual indicators for late arrivals
-6. **Roster Updates**: TodayRoster shows "Late (Xm)" or "No-Show" status
-7. **Payroll Integration**: Late counts included in payroll reports
-8. **Settings Persistence**: Grace periods saved to database, not just local state
-
----
-
 ## Testing Checklist
-- [ ] Clock in 10 minutes after shift start → marked as "Late (5m)" (after 5-min grace)
-- [ ] Clock in 3 minutes after shift start → NOT marked late (within grace)
-- [ ] Staff doesn't clock in 30 min after shift start → no-show record created
-- [ ] Dashboard shows accurate late/no-show counts
-- [ ] TodayRoster shows correct status badges
-- [ ] Manager can resolve no-show with notes
-- [ ] Payroll report includes late arrival counts
-- [ ] Settings changes persist after page refresh
+- [ ] Leave balance shows on Staff Detail Sheet
+- [ ] Leave page shows balance summary before requests
+- [ ] Leave request validation prevents exceeding balance
+- [ ] Approving leave deducts from balance
+- [ ] Zero-hour staff balance accrues at 12.07% of worked hours
+- [ ] Notification bell appears in header
+- [ ] Late clock-in creates notification for managers
+- [ ] No-show creates notification for managers
+- [ ] Notifications can be marked as read
+- [ ] Kiosk enters sleep mode after 5 min inactivity
+- [ ] Tapping sleep screen wakes kiosk
+- [ ] Camera stops during sleep mode
+- [ ] No console warning for ShiftSlot forwardRef
 
