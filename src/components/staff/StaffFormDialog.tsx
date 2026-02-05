@@ -243,7 +243,9 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
                       <FormLabel>Email</FormLabel>
                       <FormControl>
                         <Input 
-                          type="email"
+                          type="text"
+                          inputMode="email"
+                          autoComplete="off"
                           placeholder="john@example.com" 
                           {...field}
                           value={field.value ?? ''}
