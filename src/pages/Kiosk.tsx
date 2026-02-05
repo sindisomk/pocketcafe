@@ -7,6 +7,7 @@
  import { ManagerPinPad } from '@/components/kiosk/ManagerPinPad';
  import { StaffSelectModal } from '@/components/kiosk/StaffSelectModal';
  import { useAttendance } from '@/hooks/useAttendance';
+import { AttendanceRecord } from '@/types/attendance';
  import { format } from 'date-fns';
  
  export default function Kiosk() {
@@ -52,8 +53,8 @@
      setShowStaffSelect(false);
    };
  
-   const activeRecord = selectedStaff 
-     ? attendance.find(a => a.staff_id === selectedStaff.id && a.status !== 'clocked_out') ?? null
+    const activeRecord: AttendanceRecord | null = selectedStaff 
+      ? (attendance.find(a => a.staff_id === selectedStaff.id && a.status !== 'clocked_out') as AttendanceRecord | undefined) ?? null
      : null;
  
    return (
@@ -134,7 +135,7 @@
            staffId={selectedStaff.id}
            staffName={selectedStaff.name}
            staffPhoto={selectedStaff.photo}
-           activeRecord={activeRecord as any}
+            activeRecord={activeRecord}
          />
        )}
      </div>

@@ -11,7 +11,7 @@
  import { Button } from '@/components/ui/button';
  import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
  import { useAttendance } from '@/hooks/useAttendance';
- import { AttendanceRecordWithStaff } from '@/types/attendance';
+import { AttendanceRecord } from '@/types/attendance';
  import { cn } from '@/lib/utils';
  
  interface ClockActionModalProps {
@@ -20,7 +20,7 @@
    staffId: string;
    staffName: string;
    staffPhoto: string | null;
-   activeRecord: AttendanceRecordWithStaff | null;
+  activeRecord: AttendanceRecord | null;
  }
  
  export function ClockActionModal({

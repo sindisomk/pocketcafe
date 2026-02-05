@@ -1,4 +1,4 @@
- import { Users, LayoutDashboard, Calendar, Clock, Settings, LogOut, Coffee, CalendarDays, PoundSterling, MonitorSmartphone } from 'lucide-react';
+ import { Users, LayoutDashboard, Calendar, Clock, Settings, LogOut, Coffee, CalendarDays, PoundSterling } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   Sidebar,

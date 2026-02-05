@@ -139,9 +139,10 @@ export function StaffDetailSheet({ staff, open, onOpenChange }: StaffDetailSheet
           {isAdmin && (
             <>
               <Separator />
-              <Button variant="outline" className="w-full gap-2">
+              <Button variant="outline" className="w-full gap-2" disabled title="Coming soon">
                 <Pencil className="h-4 w-4" />
                 Edit Staff Member
+                {/* TODO: Implement Edit Staff dialog in Phase 2 */}
               </Button>
             </>
           )}
