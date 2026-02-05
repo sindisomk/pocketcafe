@@ -4,7 +4,7 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+
 const navItems = [{
   title: 'Dashboard',
   url: '/',
@@ -51,10 +51,6 @@ export function AppSidebar() {
   const handleSignOut = async () => {
     await signOut();
   };
-  const getUserInitials = (email?: string) => {
-    if (!email) return '?';
-    return email.substring(0, 2).toUpperCase();
-  };
   return <Sidebar className={cn("border-r-0 transition-all duration-300", collapsed ? "w-16" : "w-64")} collapsible="icon">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
@@ -92,13 +88,7 @@ export function AppSidebar() {
         {user && <div className="space-y-3">
             {/* User info - only when expanded */}
             {!collapsed && <div className="flex items-center gap-3 px-2">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-sidebar-accent text-sidebar-foreground text-xs font-medium">
-                    {getUserInitials(user.email)}
-                  </AvatarFallback>
-                </Avatar>
                 <div className="flex-1 min-w-0">
-                  
                   <p className="text-xs text-sidebar-foreground/60 truncate">
                     {user.email}
                   </p>
