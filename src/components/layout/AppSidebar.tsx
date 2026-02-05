@@ -15,6 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 const navItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
@@ -35,6 +36,11 @@ export function AppSidebar() {
 
   const handleSignOut = async () => {
     await signOut();
+  };
+
+  const getUserInitials = (email?: string) => {
+    if (!email) return '?';
+    return email.substring(0, 2).toUpperCase();
   };
 
   return (
@@ -95,18 +101,40 @@ export function AppSidebar() {
 
       <SidebarFooter className="p-4 border-t border-sidebar-border">
         {user && (
-          <Button
-            variant="ghost"
-            size={collapsed ? "icon" : "default"}
-            onClick={handleSignOut}
-            className={cn(
-              "w-full text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent",
-              collapsed ? "justify-center" : "justify-start gap-3"
+          <div className="space-y-3">
+            {/* User info - only when expanded */}
+            {!collapsed && (
+              <div className="flex items-center gap-3 px-2">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="bg-sidebar-accent text-sidebar-foreground text-xs font-medium">
+                    {getUserInitials(user.email)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-sidebar-foreground truncate">
+                    {user.user_metadata?.full_name || user.email?.split('@')[0]}
+                  </p>
+                  <p className="text-xs text-sidebar-foreground/60 truncate">
+                    {user.email}
+                  </p>
+                </div>
+              </div>
             )}
-          >
-            <LogOut className="h-5 w-5 shrink-0" />
-            {!collapsed && <span>Sign Out</span>}
-          </Button>
+            
+            {/* Sign Out Button */}
+            <Button
+              variant="ghost"
+              size={collapsed ? "icon" : "default"}
+              onClick={handleSignOut}
+              className={cn(
+                "w-full text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent",
+                collapsed ? "justify-center" : "justify-start gap-3"
+              )}
+            >
+              <LogOut className="h-5 w-5 shrink-0" />
+              {!collapsed && <span>Sign Out</span>}
+            </Button>
+          </div>
         )}
       </SidebarFooter>
     </Sidebar>
