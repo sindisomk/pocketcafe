@@ -21,6 +21,7 @@ interface StaffDetailSheetProps {
   staff: StaffProfile | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onEdit?: (staff: StaffProfile) => void;
 }
 
 const roleColors: Record<string, string> = {
@@ -35,7 +36,7 @@ const roleLabels: Record<string, string> = {
   management: 'Management',
 };
 
-export function StaffDetailSheet({ staff, open, onOpenChange }: StaffDetailSheetProps) {
+export function StaffDetailSheet({ staff, open, onOpenChange, onEdit }: StaffDetailSheetProps) {
   const { isAdmin } = useAuth();
   const { updateStaff } = useStaff();
 
@@ -139,10 +140,13 @@ export function StaffDetailSheet({ staff, open, onOpenChange }: StaffDetailSheet
           {isAdmin && (
             <>
               <Separator />
-              <Button variant="outline" className="w-full gap-2" disabled title="Coming soon">
+              <Button 
+                variant="outline" 
+                className="w-full gap-2" 
+                onClick={() => staff && onEdit?.(staff)}
+              >
                 <Pencil className="h-4 w-4" />
                 Edit Staff Member
-                {/* TODO: Implement Edit Staff dialog in Phase 2 */}
               </Button>
             </>
           )}
