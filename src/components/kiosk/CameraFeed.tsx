@@ -123,17 +123,17 @@ function CameraFeedContent({
          setScanningStatus('detected');
          setStatusMessage(`Welcome, ${data.staffName}!`);
           setLastDetectedConfidence(data.confidence);
-         
-         // Set match cooldown to prevent re-detection for 5 seconds
-         matchCooldownRef.current = true;
-         setTimeout(() => {
-           matchCooldownRef.current = false;
-           setScanningStatus('idle');
-           setStatusMessage('Position your face in the frame');
-            setLastDetectedConfidence(null);
-         }, 5000);
- 
-         onFaceDetected(data.staffId, data.confidence);
+          
+          // Set match cooldown to prevent re-detection - extended to 8 seconds
+          // Parent controls when to clear detection state via detectedStaffId prop
+          matchCooldownRef.current = true;
+          setTimeout(() => {
+            matchCooldownRef.current = false;
+            // Only reset UI if parent has cleared the detection
+            // This prevents overlay from disappearing while user is deciding
+          }, 8000);
+
+          onFaceDetected(data.staffId, data.confidence);
        } else {
          setScanningStatus('idle');
          if (data.error === 'No enrolled faces yet') {
@@ -160,8 +160,18 @@ function CameraFeedContent({
        captureAndSearch();
      }, 3000);
  
-     return () => clearInterval(interval);
-   }, [cameraActive, isProcessing, captureAndSearch]);
+      return () => clearInterval(interval);
+    }, [cameraActive, isProcessing, captureAndSearch]);
+
+    // Sync scanning status with parent's detection state
+    // When parent clears detectedStaffId, reset CameraFeed's internal state
+    useEffect(() => {
+      if (!detectedStaffId) {
+        setScanningStatus('idle');
+        setStatusMessage('Position your face in the frame');
+        setLastDetectedConfidence(null);
+      }
+    }, [detectedStaffId]);
  
   // Manual scan trigger - bypasses cooldowns
   const handleManualScan = () => {
@@ -272,7 +282,7 @@ function CameraFeedContent({
                 )}
 
                 {/* Redesigned action overlay when face detected */}
-                {scanningStatus === 'detected' && detectedStaffId && onQuickAction && (
+                {detectedStaffId && staffName && onQuickAction && (
                   <div className="absolute bottom-16 left-1/2 -translate-x-1/2 pointer-events-auto">
                     <div className="bg-background/95 backdrop-blur-sm rounded-2xl p-5 shadow-2xl border border-border min-w-[320px]">
                       {/* Staff info header */}
