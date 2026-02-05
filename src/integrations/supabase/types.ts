@@ -105,13 +105,6 @@ export type Database = {
             foreignKeyName: "attendance_records_staff_id_fkey"
             columns: ["staff_id"]
             isOneToOne: false
-            referencedRelation: "staff_profiles_admin"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "attendance_records_staff_id_fkey"
-            columns: ["staff_id"]
-            isOneToOne: false
             referencedRelation: "staff_profiles_manager"
             referencedColumns: ["id"]
           },
@@ -184,13 +177,6 @@ export type Database = {
             foreignKeyName: "leave_balances_staff_id_fkey"
             columns: ["staff_id"]
             isOneToOne: true
-            referencedRelation: "staff_profiles_admin"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "leave_balances_staff_id_fkey"
-            columns: ["staff_id"]
-            isOneToOne: true
             referencedRelation: "staff_profiles_manager"
             referencedColumns: ["id"]
           },
@@ -242,13 +228,6 @@ export type Database = {
             columns: ["staff_id"]
             isOneToOne: false
             referencedRelation: "staff_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "leave_requests_staff_id_fkey"
-            columns: ["staff_id"]
-            isOneToOne: false
-            referencedRelation: "staff_profiles_admin"
             referencedColumns: ["id"]
           },
           {
@@ -343,13 +322,6 @@ export type Database = {
             foreignKeyName: "no_show_records_staff_id_fkey"
             columns: ["staff_id"]
             isOneToOne: false
-            referencedRelation: "staff_profiles_admin"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "no_show_records_staff_id_fkey"
-            columns: ["staff_id"]
-            isOneToOne: false
             referencedRelation: "staff_profiles_manager"
             referencedColumns: ["id"]
           },
@@ -395,13 +367,6 @@ export type Database = {
             columns: ["related_staff_id"]
             isOneToOne: false
             referencedRelation: "staff_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notifications_related_staff_id_fkey"
-            columns: ["related_staff_id"]
-            isOneToOne: false
-            referencedRelation: "staff_profiles_admin"
             referencedColumns: ["id"]
           },
           {
@@ -484,13 +449,6 @@ export type Database = {
             columns: ["staff_id"]
             isOneToOne: false
             referencedRelation: "staff_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "shifts_staff_id_fkey"
-            columns: ["staff_id"]
-            isOneToOne: false
-            referencedRelation: "staff_profiles_admin"
             referencedColumns: ["id"]
           },
           {
@@ -615,66 +573,6 @@ export type Database = {
       }
     }
     Views: {
-      staff_profiles_admin: {
-        Row: {
-          contact_email: string | null
-          contact_phone: string | null
-          contract_type: Database["public"]["Enums"]["contract_type"] | null
-          created_at: string | null
-          face_enrolled: boolean | null
-          hourly_rate: number | null
-          id: string | null
-          job_title: Database["public"]["Enums"]["job_title"] | null
-          name: string | null
-          ni_number: string | null
-          nic_category: string | null
-          profile_photo_url: string | null
-          role: Database["public"]["Enums"]["staff_role"] | null
-          start_date: string | null
-          tax_code: string | null
-          updated_at: string | null
-          user_id: string | null
-        }
-        Insert: {
-          contact_email?: string | null
-          contact_phone?: string | null
-          contract_type?: Database["public"]["Enums"]["contract_type"] | null
-          created_at?: string | null
-          face_enrolled?: never
-          hourly_rate?: number | null
-          id?: string | null
-          job_title?: Database["public"]["Enums"]["job_title"] | null
-          name?: string | null
-          ni_number?: string | null
-          nic_category?: string | null
-          profile_photo_url?: string | null
-          role?: Database["public"]["Enums"]["staff_role"] | null
-          start_date?: string | null
-          tax_code?: string | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          contact_email?: string | null
-          contact_phone?: string | null
-          contract_type?: Database["public"]["Enums"]["contract_type"] | null
-          created_at?: string | null
-          face_enrolled?: never
-          hourly_rate?: number | null
-          id?: string | null
-          job_title?: Database["public"]["Enums"]["job_title"] | null
-          name?: string | null
-          ni_number?: string | null
-          nic_category?: string | null
-          profile_photo_url?: string | null
-          role?: Database["public"]["Enums"]["staff_role"] | null
-          start_date?: string | null
-          tax_code?: string | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
       staff_profiles_manager: {
         Row: {
           contact_email: string | null
@@ -736,6 +634,20 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_manager: { Args: never; Returns: boolean }
+      manager_update_staff_profile: {
+        Args: {
+          p_contact_email?: string
+          p_contact_phone?: string
+          p_contract_type?: Database["public"]["Enums"]["contract_type"]
+          p_job_title?: Database["public"]["Enums"]["job_title"]
+          p_name?: string
+          p_profile_photo_url?: string
+          p_role?: Database["public"]["Enums"]["staff_role"]
+          p_staff_id: string
+          p_start_date?: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "manager"
