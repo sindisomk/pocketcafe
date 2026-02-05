@@ -1,5 +1,5 @@
- import { createClient } from "npm:@supabase/supabase-js@2";
- import { hash, compare } from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import * as bcrypt from "jsr:@da/bcrypt@1.0.1";
  
  const corsHeaders = {
    "Access-Control-Allow-Origin": "*",
@@ -24,7 +24,7 @@
      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
      const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
  
-     if (!supabaseUrl || !serviceRoleKey) {
+     if (!supabaseUrl || !serviceRoleKey || !anonKey) {
        console.error("Missing required environment variables");
        return new Response(
          JSON.stringify({ error: "Server configuration error" }),
@@ -59,11 +59,11 @@
        }
  
        // Create user client to verify auth
-       const supabaseUser = createClient(
-         supabaseUrl,
-         anonKey ?? "",
-         { global: { headers: { Authorization: authHeader } } }
-       );
+        const supabaseUser = createClient(
+          supabaseUrl,
+          anonKey,
+          { global: { headers: { Authorization: authHeader } } }
+        );
  
        const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
        if (authError || !user) {
@@ -99,7 +99,7 @@
            .single();
  
          if (existingPin) {
-           const isValid = await compare(current_pin, existingPin.pin_hash);
+            const isValid = bcrypt.compareSync(current_pin, existingPin.pin_hash);
            if (!isValid) {
              return new Response(
                JSON.stringify({ error: "Current PIN is incorrect" }),
@@ -110,7 +110,8 @@
        }
  
        // Hash the new PIN with bcrypt (cost factor 10)
-       const pinHash = await hash(pin);
+        const salt = bcrypt.genSaltSync(10);
+        const pinHash = bcrypt.hashSync(pin, salt);
  
        // Upsert to manager_pins table
        const { error: upsertError } = await supabaseAdmin
@@ -153,7 +154,7 @@
  
        // Compare against each hash (bcrypt.compare is timing-safe)
        for (const pinRecord of pins) {
-         const isMatch = await compare(pin, pinRecord.pin_hash);
+          const isMatch = bcrypt.compareSync(pin, pinRecord.pin_hash);
          if (isMatch) {
            return new Response(
              JSON.stringify({ valid: true, manager_id: pinRecord.user_id }),
