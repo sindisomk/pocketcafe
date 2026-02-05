@@ -153,10 +153,10 @@ export default function Login() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     disabled={isLoading}
-                    minLength={6}
+                    minLength={8}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Must be at least 6 characters
+                    Must be at least 8 characters
                   </p>
                 </div>
 
