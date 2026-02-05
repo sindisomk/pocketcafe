@@ -110,6 +110,54 @@ export type Database = {
           },
         ]
       }
+      leave_balances: {
+        Row: {
+          accrued_hours: number | null
+          created_at: string | null
+          id: string
+          staff_id: string
+          total_entitlement_hours: number | null
+          updated_at: string | null
+          used_hours: number | null
+          year: number | null
+        }
+        Insert: {
+          accrued_hours?: number | null
+          created_at?: string | null
+          id?: string
+          staff_id: string
+          total_entitlement_hours?: number | null
+          updated_at?: string | null
+          used_hours?: number | null
+          year?: number | null
+        }
+        Update: {
+          accrued_hours?: number | null
+          created_at?: string | null
+          id?: string
+          staff_id?: string
+          total_entitlement_hours?: number | null
+          updated_at?: string | null
+          used_hours?: number | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_balances_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: true
+            referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leave_balances_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: true
+            referencedRelation: "staff_profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leave_requests: {
         Row: {
           created_at: string
@@ -249,6 +297,57 @@ export type Database = {
           {
             foreignKeyName: "no_show_records_staff_id_fkey"
             columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          message: string | null
+          read_at: string | null
+          recipient_id: string
+          related_record_id: string | null
+          related_staff_id: string | null
+          title: string
+          type: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          message?: string | null
+          read_at?: string | null
+          recipient_id: string
+          related_record_id?: string | null
+          related_staff_id?: string | null
+          title: string
+          type: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          message?: string | null
+          read_at?: string | null
+          recipient_id?: string
+          related_record_id?: string | null
+          related_staff_id?: string | null
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_related_staff_id_fkey"
+            columns: ["related_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_related_staff_id_fkey"
+            columns: ["related_staff_id"]
             isOneToOne: false
             referencedRelation: "staff_profiles_public"
             referencedColumns: ["id"]

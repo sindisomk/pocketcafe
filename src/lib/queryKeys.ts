@@ -16,9 +16,13 @@ export const queryKeys = {
   
   // Leave
   leaveRequests: ['leave-requests'] as const,
+  leaveBalance: (staffId: string) => ['leave-balance', staffId] as const,
   
   // Payroll
   payrollAttendance: (start: string, end: string) => ['payroll-attendance', start, end] as const,
+
+  // Notifications
+  notifications: ['notifications'] as const,
 } as const;
 
 // Helper type for query key
