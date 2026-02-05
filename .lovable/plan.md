@@ -1,73 +1,98 @@
 
-# Fix: Force Complete Rebuild to Clear Cached Broken Code
+Goal: eliminate the “blank / page” by (a) making sure we never get stuck in an infinite auth loading state, and (b) surfacing the *real* runtime error (including “Component is not a function” / unhandled promise rejections) instead of silently white-screening.
 
-## Problem Identified
+## What I found from debugging
+- `/login` renders correctly (Welcome to PocketCafe, Email/Password, Sign In).
+- `/` in the controlled browser session renders essentially “nothing” (at most a subtle skeleton), and there are **no actionable runtime errors shown** in the browser tool console—only unrelated `postMessage` origin warnings.
+- Your earlier console logs show:
+  - `Function components cannot be given refs...` (this was previously Skeleton-related, but Skeleton is now correctly `forwardRef`.)
+  - `UNHANDLED_PROMISE_REJECTION` with `TypeError: Component is not a function`, which can crash React rendering and produce a blank page.
+- The most plausible current failure mode is: **the app hits a runtime error outside React’s render stack (promise rejection), or `useAuth()` never flips `loading` to false (or flips too late), leaving `AppLayout` stuck on the loading skeleton**. Because this happens early, the UI looks blank and provides no clue.
 
-After thorough investigation using browser testing and code analysis, I've confirmed:
+## Implementation plan (real fix, not guesswork)
 
-1. **The code fixes are correct** - The skeleton.tsx component now uses proper `React.forwardRef` pattern with `displayName`, and vite.config.ts has the `dedupe` configuration
-2. **The app works in a fresh browser session** - My browser testing confirmed the login page loads, skeleton loading states display correctly, and there are no "Component is not a function" errors
-3. **The user is seeing cached/stale content** - The console errors the user reported are from old JavaScript bundles that haven't been refreshed
+### 1) Add a global “last line of defense” error handler in `App.tsx`
+Purpose: catch and report the exact error causing the blank screen, especially:
+- `unhandledrejection` (matches your error report)
+- `error` (uncaught exceptions)
 
-The "Component is not a function" error occurs when Vite's bundler creates multiple React instances or when cached modules reference stale component definitions. The `dedupe` fix we added addresses this, but browsers aggressively cache JavaScript files.
+What we’ll do:
+- Add a `useEffect` in `App.tsx` that:
+  - `console.error()` logs the error/rejection reason
+  - shows a visible toast (using the existing Sonner `toast`) with a short message
+  - (optionally) stores the last error in React state so we can render a visible “App crashed” fallback panel
 
-## Solution
+Why this matters:
+- Your reported error is explicitly an **UNHANDLED_PROMISE_REJECTION**. Without this, the app can “die” with no UI.
 
-Force a complete rebuild by making a small modification to the main entry point. This will:
-- Trigger a full rebuild of all JavaScript bundles
-- Generate new cache-busting hashes for all chunk files
-- Force the browser to download fresh code
+### 2) Wrap routing in an Error Boundary with a visible fallback UI
+Purpose: prevent total blanking when a render-time error happens, and provide a recovery path.
 
-### Step 1: Modify main.tsx to Force Fresh Build
+What we’ll do:
+- Create a small `ErrorBoundary` component (new file, e.g. `src/components/system/ErrorBoundary.tsx`):
+  - `componentDidCatch` logs error + stack
+  - Fallback UI shows:
+    - “Something went wrong”
+    - a button to go to `/login`
+    - a “Reload” button
+    - (in dev) a collapsible panel with error message/stack
+- Wrap the `<Routes>` (or the whole router area) with `<ErrorBoundary>` in `App.tsx`.
 
-Add a build version comment and wrap in StrictMode (which is a React best practice and will ensure clean rendering):
+Why this matters:
+- If “Component is not a function” is thrown during render/hydration/update, an Error Boundary will stop the app from becoming a white screen and will help us pinpoint which subtree fails.
 
-```typescript
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import App from "./App.tsx";
-import "./index.css";
+### 3) Harden `useAuth()` so `loading` cannot hang forever
+Purpose: ensure `/` never looks blank just because auth never resolves.
 
-// Build version: 2026-02-05-v2 (cache bust)
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);
-```
+Changes in `src/hooks/useAuth.ts`:
+- Add a short watchdog timeout (e.g. 2500–4000ms):
+  - If `loading` is still true after the timeout, force `loading: false` and `user: null`
+  - This guarantees `AppLayout` will redirect to `/login` instead of hanging
+- Make `fetchRole()` fully defensive:
+  - wrap the query in `try/catch`
+  - return `null` on any failure
+- Make the initial session fetch robust:
+  - handle the case where `.getSession()` resolves but the role fetch hangs by adding a role-fetch timeout (optional but recommended)
 
-### Step 2: User Action Required
+Why this matters:
+- Today `/login` works, but `/` is protected by `AppLayout`. If auth hangs, `AppLayout` shows only the loader forever, which users interpret as “blank page”.
 
-After the deployment, the user needs to:
-1. Open the browser DevTools (F12)
-2. Right-click the Refresh button
-3. Select "Empty Cache and Hard Reload"
+### 4) Add targeted instrumentation to identify the exact “Component is not a function” source
+Purpose: stop guessing which component is invalid.
 
-Or use keyboard shortcut: `Ctrl+Shift+R` (Windows/Linux) or `Cmd+Shift+R` (Mac)
+What we’ll log (temporarily, in dev-safe places):
+- In the global handlers, log:
+  - `typeof event.reason`, `event.reason?.message`, `event.reason?.stack`
+- In the ErrorBoundary fallback, display the component stack (React provides it) if available.
+- Optionally: add a single `console.log("App booted", { buildVersion })` in `App.tsx` so we can confirm you’re running the latest bundle when you report back.
 
-## Files to Modify
+### 5) Verification steps (what you’ll test after implementation)
+1. Open `/`:
+   - Expected: either the dashboard loads, or you get redirected to `/login`.
+   - Not acceptable: infinite blank/skeleton with no navigation.
+2. If an error still occurs:
+   - Expected: you see a toast and/or an ErrorBoundary fallback showing a meaningful error message instead of a blank screen.
+3. Navigate to `/login`, sign in:
+   - Expected: you land on `/` and see the dashboard.
+4. Re-check console:
+   - We should now see the real stack trace pointing to the exact component/module if “Component is not a function” persists.
 
-| File | Change |
-|------|--------|
-| `src/main.tsx` | Add StrictMode wrapper and build version comment |
+## Files that will be changed/added
+- Update: `src/App.tsx`
+  - Add global `unhandledrejection` + `error` listeners
+  - Wrap router area in `ErrorBoundary`
+- Update: `src/hooks/useAuth.ts`
+  - Add watchdog timeout + defensive role fetching
+- Add: `src/components/system/ErrorBoundary.tsx` (new)
+  - Reusable error boundary + fallback UI
 
-## Why This Works
+## Why this will “get to the bottom of it”
+- Right now, you have a production-style symptom (blank screen) but not enough surfaced diagnostics.
+- This plan both:
+  1) prevents hanging UI states (auth watchdog), and
+  2) forces the app to reveal the real underlying exception/rejection (global handlers + ErrorBoundary),
+so we can fix the actual offending module if it’s still present.
 
-1. **Any change to main.tsx triggers a full rebuild** - Since it's the entry point, Vite will regenerate all module hashes
-2. **StrictMode is a React best practice** - It helps catch issues early and ensures components are mounted/unmounted cleanly
-3. **The build comment provides versioning** - This makes it easy to verify which version is deployed
-
-## Expected Outcome
-
-After this change and a hard refresh:
-- The dashboard at `/` will render correctly
-- All navigation will work without errors
-- The Skeleton component will display properly during loading states
-- No more "Component is not a function" or "cannot be given refs" warnings
-
-## If the Issue Persists
-
-If after hard refresh the issue still occurs, the next step would be to:
-1. Check browser's Network tab to verify new JS files are being downloaded (not 304 cached)
-2. Clear all site data from Application tab in DevTools
-3. Try in an Incognito/Private browsing window
+## Expected outcome
+- `/` will no longer be blank with no information.
+- If the underlying bug still exists, we will have a precise error message and stack trace to fix it in the next iteration.
