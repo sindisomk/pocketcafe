@@ -1,5 +1,6 @@
  import { useState, useEffect } from 'react';
- import { Coffee, KeyRound, Clock } from 'lucide-react';
+import { Coffee, KeyRound, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
  import { Button } from '@/components/ui/button';
  import { CameraFeed } from '@/components/kiosk/CameraFeed';
  import { TodayRoster } from '@/components/kiosk/TodayRoster';
@@ -11,8 +12,10 @@ import { AttendanceRecord } from '@/types/attendance';
  import { format } from 'date-fns';
  
  export default function Kiosk() {
+  const navigate = useNavigate();
    const [currentTime, setCurrentTime] = useState(new Date());
    const [showPinPad, setShowPinPad] = useState(false);
+  const [pinPadMode, setPinPadMode] = useState<'override' | 'exit'>('override');
    const [showStaffSelect, setShowStaffSelect] = useState(false);
    const [selectedStaff, setSelectedStaff] = useState<{
      id: string;
@@ -44,7 +47,22 @@ import { AttendanceRecord } from '@/types/attendance';
  
    // Handle manager override success
    const handlePinVerified = () => {
-     setShowStaffSelect(true);
+    if (pinPadMode === 'exit') {
+      setShowPinPad(false);
+      navigate('/');
+    } else {
+      setShowStaffSelect(true);
+    }
+  };
+
+  const handleManagerOverride = () => {
+    setPinPadMode('override');
+    setShowPinPad(true);
+  };
+
+  const handleExitKiosk = () => {
+    setPinPadMode('exit');
+    setShowPinPad(true);
    };
  
    // Handle manual staff selection (after PIN override)
@@ -88,11 +106,22 @@ import { AttendanceRecord } from '@/types/attendance';
                variant="outline"
                size="lg"
                className="border-sidebar-border bg-sidebar-accent hover:bg-sidebar-accent/80"
-               onClick={() => setShowPinPad(true)}
+                onClick={handleManagerOverride}
              >
                <KeyRound className="h-5 w-5 mr-2" />
                Manager Override
              </Button>
+
+              {/* Exit Kiosk */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                onClick={handleExitKiosk}
+                title="Exit Kiosk (requires PIN)"
+              >
+                <LogOut className="h-5 w-5" />
+              </Button>
            </div>
          </div>
        </header>
@@ -120,6 +149,8 @@ import { AttendanceRecord } from '@/types/attendance';
          open={showPinPad}
          onOpenChange={setShowPinPad}
          onPinVerified={handlePinVerified}
+          title={pinPadMode === 'exit' ? 'Exit Kiosk' : 'Manager Override'}
+          description={pinPadMode === 'exit' ? 'Enter your manager PIN to exit kiosk mode' : 'Enter your manager PIN to override'}
        />
  
        <StaffSelectModal

@@ -15,9 +15,17 @@
    open: boolean;
    onOpenChange: (open: boolean) => void;
    onPinVerified: () => void;
+  title?: string;
+  description?: string;
  }
  
- export function ManagerPinPad({ open, onOpenChange, onPinVerified }: ManagerPinPadProps) {
+export function ManagerPinPad({ 
+  open, 
+  onOpenChange, 
+  onPinVerified,
+  title = "Manager Override",
+  description = "Enter your manager PIN to override"
+}: ManagerPinPadProps) {
    const [pin, setPin] = useState('');
    const [error, setError] = useState<string | null>(null);
    const [isVerifying, setIsVerifying] = useState(false);
@@ -83,9 +91,9 @@
                <KeyRound className="h-8 w-8 text-primary" />
              </div>
            </div>
-           <DialogTitle>Manager Override</DialogTitle>
+            <DialogTitle>{title}</DialogTitle>
            <DialogDescription>
-             Enter your manager PIN to override
+              {description}
            </DialogDescription>
          </DialogHeader>
  
