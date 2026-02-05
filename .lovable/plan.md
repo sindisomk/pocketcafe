@@ -1,165 +1,178 @@
 
 
 ## Goal
-Add a prominent "Tap to Scan" button for manual face recognition triggering and improve clarity of available clock actions based on current staff status.
+Fix the facial recognition clock-in flow so that:
+1. Staff who clock in via facial recognition appear on the Attendance page
+2. The Kiosk's TodayRoster updates their status from "Expected" to "Clocked In"
+3. The quick action overlay stays visible until the user takes action
 
 ---
 
-## Current State Analysis
+## Root Cause Analysis
 
-### What Exists
-- Auto-scanning every 3 seconds when camera is active
-- Quick action overlay appears after face detection with buttons for Clock In, Break, End Break, Clock Out
-- Status message shows "Position your face in the frame" or "Scanning..."
+### Problem 1: Race Condition in Overlay Display
+The camera overlay's visibility depends on TWO separate state sources:
+- `scanningStatus === 'detected'` - managed inside CameraFeed component
+- `detectedStaffId` - passed from parent Kiosk.tsx
 
-### Issues to Address
-1. **No Manual Trigger**: Staff must wait for the 3-second auto-scan interval
-2. **Action Clarity**: The overlay shows multiple buttons but doesn't clearly indicate the CURRENT status or PRIMARY action
-3. **No Visual Cue**: Users don't know when scanning will happen
+When face is detected:
+1. CameraFeed sets `scanningStatus = 'detected'` immediately
+2. CameraFeed calls `onFaceDetected(staffId, confidence)`
+3. Kiosk.tsx fetches staff name asynchronously, THEN sets `detectedStaffId`
 
----
+During step 3, there's a delay where `scanningStatus === 'detected'` but `detectedStaffId` is still null, so the overlay doesn't show. By the time `detectedStaffId` is set, the 5-second cooldown may have already reset `scanningStatus` to 'idle'.
 
-## Implementation Plan
+### Problem 2: Overlay Auto-Hides Too Quickly
+The current timeout (5 seconds) may not be enough for users to read and tap the button, especially if there was initial delay in showing the overlay.
 
-### 1. Add "Tap to Scan" Button
-A large, prominent button in the center-bottom of the camera view that staff can tap to immediately trigger face scanning.
-
-**Location**: Below the face frame, above the status message
-**Behavior**:
-- Tapping triggers `captureAndSearch()` immediately
-- Button shows loading state while scanning
-- Hidden when face is detected (replaced by action overlay)
-
-### 2. Improve Status Clarity
-Replace the simple status text with a more informative display showing:
-- Current action available (what will happen)
-- Staff's current status if detected
-
-### 3. Redesign Action Overlay
-When face is detected, show a clearer overlay that:
-- Displays ONE prominent primary action button
-- Shows current status badge (e.g., "Currently: Clocked In")
-- Shows secondary actions in smaller format
+### Problem 3: Query Cache Not Refreshing TodayRoster
+Both Kiosk.tsx and TodayRoster.tsx call `useAttendance()`, which creates separate React Query subscriptions. While `invalidateQueries` should refresh both, the TodayRoster might not re-render if:
+- The query key doesn't exactly match
+- The component doesn't subscribe to the invalidated query
 
 ---
 
-## UI Changes to CameraFeed.tsx
+## Solution
 
-### New "Tap to Scan" Button
-```text
-+------------------------------------------+
-|                                          |
-|           [Camera Feed]                  |
-|                                          |
-|        +------------------+              |
-|        |   Face Frame     |              |
-|        |                  |              |
-|        +------------------+              |
-|                                          |
-|         [ 👆 TAP TO SCAN ]               |  <-- NEW prominent button
-|                                          |
-|    "Position your face in the frame"    |
-+------------------------------------------+
-```
+### Fix 1: Sync Detection State in CameraFeed
+Instead of relying on both `scanningStatus` and `detectedStaffId` being set, have CameraFeed manage detection state internally and only show overlay when BOTH the Face++ match AND the parent has acknowledged the detection (via props).
 
-### Improved Detection Overlay
-```text
-+------------------------------------------+
-|                                          |
-|           [Camera Feed]                  |
-|                                          |
-|    +-----------------------------+       |
-|    |  👤 John Smith              |       |
-|    |  Match: 95% confident       |       |
-|    |                             |       |
-|    |  [  Currently: Not Clocked In  ]    |  <-- Status badge
-|    |                             |       |
-|    |  +---------------------+    |       |
-|    |  |   🟢 CLOCK IN      |    |       |  <-- Primary action (large)
-|    |  +---------------------+    |       |
-|    |                             |       |
-|    +-----------------------------+       |
-+------------------------------------------+
+**Changes to `src/components/kiosk/CameraFeed.tsx`:**
+- Use `detectedStaffId` prop as the primary source of truth for showing overlay
+- Keep `scanningStatus` for the scanning animation only
+- Don't auto-hide overlay while `detectedStaffId` is set - let parent control visibility
 
-When already clocked in:
-+-----------------------------+
-|  👤 John Smith              |
-|  Match: 95% confident       |
-|                             |
-|  [  Currently: Working  ]   |  <-- Green status
-|                             |
-|  +---------------+  +---------------+
-|  | ☕ START BREAK|  | 🔴 CLOCK OUT  |
-|  +---------------+  +---------------+
-+-----------------------------+
-
-When on break:
-+-----------------------------+
-|  👤 John Smith              |
-|  Match: 95% confident       |
-|                             |
-|  [ ☕ Currently: On Break ] |  <-- Yellow status
-|                             |
-|  +---------------------+    |
-|  |   ⏱️ END BREAK      |    |  <-- Primary action
-|  +---------------------+    |
-|  [ Clock Out ]              |  <-- Secondary (smaller)
-+-----------------------------+
-```
-
----
-
-## Technical Changes
-
-### CameraFeed.tsx Modifications
-
-1. **Add manual scan trigger prop and expose captureAndSearch**:
 ```typescript
-// Make captureAndSearch callable from button
-const handleManualScan = () => {
-  // Clear cooldowns for manual scan
-  searchCooldownRef.current = false;
-  lastSearchRef.current = 0;
-  captureAndSearch();
+// Current (broken):
+{scanningStatus === 'detected' && detectedStaffId && onQuickAction && (...)}
+
+// Fixed:
+{detectedStaffId && staffName && onQuickAction && (...)}
+```
+
+### Fix 2: Extend/Remove Auto-Hide Timer
+Remove the automatic reset of detection state. Let the parent (Kiosk.tsx) control when to clear `detectedStaffId` - this already happens in `handleQuickAction` with a 2-second delay after action.
+
+**Changes to `src/components/kiosk/CameraFeed.tsx`:**
+- Remove or extend the 5-second `matchCooldownRef` that resets `scanningStatus`
+- The overlay visibility should be controlled by parent state, not internal timer
+
+### Fix 3: Ensure Query Invalidation Works
+Add explicit refetch calls and verify query keys match.
+
+**Changes to `src/components/kiosk/TodayRoster.tsx`:**
+- Ensure the `useAttendance()` hook's query key matches what gets invalidated
+
+**Changes to `src/pages/Kiosk.tsx`:**
+- After successful clock action, wait briefly then refetch to ensure data is fresh
+
+---
+
+## Implementation Details
+
+### File: `src/components/kiosk/CameraFeed.tsx`
+
+1. **Change overlay visibility condition** (around line 275):
+```typescript
+// OLD:
+{scanningStatus === 'detected' && detectedStaffId && onQuickAction && (
+
+// NEW - Use props as source of truth:
+{detectedStaffId && staffName && onQuickAction && (
+```
+
+2. **Modify match cooldown logic** (around lines 127-134):
+```typescript
+// OLD: Resets scanningStatus to 'idle' after 5 seconds
+matchCooldownRef.current = true;
+setTimeout(() => {
+  matchCooldownRef.current = false;
+  setScanningStatus('idle');  // <-- This kills the overlay
+  setStatusMessage('Position your face in the frame');
+  setLastDetectedConfidence(null);
+}, 5000);
+
+// NEW: Only reset cooldown, don't clear state (parent controls visibility)
+matchCooldownRef.current = true;
+setTimeout(() => {
+  matchCooldownRef.current = false;
+  // Only reset if parent has cleared detection
+  if (!detectedStaffId) {
+    setScanningStatus('idle');
+    setStatusMessage('Position your face in the frame');
+  }
+}, 8000); // Extend to 8 seconds for cooldown between scans
+```
+
+3. **Reset scanning status when detection is cleared**:
+```typescript
+// Add useEffect to sync with parent state
+useEffect(() => {
+  if (!detectedStaffId) {
+    setScanningStatus('idle');
+    setStatusMessage('Position your face in the frame');
+    setLastDetectedConfidence(null);
+  }
+}, [detectedStaffId]);
+```
+
+### File: `src/pages/Kiosk.tsx`
+
+4. **Improve handleQuickAction with better error handling**:
+```typescript
+const handleQuickAction = async (
+  action: 'clock_in' | 'start_break' | 'end_break' | 'clock_out',
+  staffId: string,
+  confidence: number
+) => {
+  try {
+    switch (action) {
+      case 'clock_in':
+        await clockIn.mutateAsync({
+          staffId,
+          faceConfidence: confidence,
+        });
+        break;
+      // ... other cases unchanged
+    }
+    
+    // Give the mutation time to propagate, then refetch
+    await new Promise(resolve => setTimeout(resolve, 500));
+    await refetch();
+    
+    // Clear detection after successful action
+    setDetectedStaffId(null);
+    setDetectedConfidence(null);
+    setDetectedStaffName(null);
+    
+  } catch (error) {
+    console.error('[Kiosk] Quick action failed:', error);
+    toast.error('Action failed. Please try again.');
+  }
 };
 ```
 
-2. **Add "Tap to Scan" button**:
+5. **Improve handleFaceDetected to be synchronous**:
 ```typescript
-{/* Tap to Scan button - shown when idle */}
-{scanningStatus === 'idle' && cameraActive && !detectedStaffId && (
-  <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-auto">
-    <Button
-      size="lg"
-      className="text-lg px-8 py-6 shadow-lg"
-      onClick={handleManualScan}
-    >
-      <Scan className="h-6 w-6 mr-2" />
-      Tap to Scan
-    </Button>
-  </div>
-)}
-```
-
-3. **Add status badge component**:
-```typescript
-// Status badge showing current state
-const getStatusBadge = () => {
-  if (!activeRecord) return { label: 'Not Clocked In', color: 'bg-muted' };
-  if (activeRecord.status === 'on_break') return { label: 'On Break', color: 'bg-warning' };
-  if (activeRecord.status === 'clocked_in') return { label: 'Working', color: 'bg-success' };
-  return { label: 'Unknown', color: 'bg-muted' };
-};
-```
-
-4. **Redesign action overlay with primary/secondary actions**:
-```typescript
-// Determine primary action
-const getPrimaryAction = () => {
-  if (!activeRecord) return 'clock_in';
-  if (activeRecord.status === 'on_break') return 'end_break';
-  if (activeRecord.status === 'clocked_in') return 'start_break'; // or clock_out as secondary
-  return null;
+const handleFaceDetected = async (staffId: string, confidence: number) => {
+  // Set detection state BEFORE async fetch
+  setDetectedStaffId(staffId);
+  setDetectedConfidence(confidence);
+  setIsProcessing(true);
+  
+  try {
+    const { data, error } = await supabase
+      .from('staff_profiles_public')
+      .select('id, name, profile_photo_url')
+      .eq('id', staffId)
+      .single();
+    
+    if (!error && data) {
+      setDetectedStaffName(data.name as string);
+    }
+  } finally {
+    setIsProcessing(false);
+  }
 };
 ```
 
@@ -169,46 +182,30 @@ const getPrimaryAction = () => {
 
 | File | Changes |
 |------|---------|
-| `src/components/kiosk/CameraFeed.tsx` | Add Tap to Scan button, status badge, redesigned action overlay with clear primary/secondary actions |
+| `src/components/kiosk/CameraFeed.tsx` | Fix overlay visibility condition, extend cooldown timer, add useEffect to sync with parent state |
+| `src/pages/Kiosk.tsx` | Improve handleFaceDetected to set state immediately, improve handleQuickAction with delay before refetch |
 
 ---
 
-## New Icon Import
-```typescript
-import { Camera, CameraOff, Loader2, LogIn, LogOut, Coffee, Clock, Scan } from 'lucide-react';
-```
+## Expected Behavior After Fix
 
----
-
-## User Experience Flow
-
-### Standard Flow (with Tap to Scan)
 1. Staff approaches kiosk
-2. Sees prominent "Tap to Scan" button
-3. Taps button (or waits for auto-scan)
-4. Face recognized - overlay appears showing:
-   - Name and confidence
-   - Current status: "Not Clocked In"
-   - Large green "CLOCK IN" button
-5. Taps Clock In
-6. Success toast, returns to scan mode
+2. Face is detected by Face++ (3-second interval or manual tap)
+3. Overlay appears IMMEDIATELY with staff name and "Clock In" button
+4. Staff taps "Clock In"
+5. Record is inserted into `attendance_records` with `face_match_confidence`
+6. Toast shows "Clocked in successfully!"
+7. TodayRoster updates to show staff as "On Duty"
+8. Attendance page shows the new record
+9. Overlay clears, ready for next person
 
-### Already Working - Taking Break
-1. Staff approaches, taps "Tap to Scan"
-2. Face recognized - overlay shows:
-   - Name and confidence
-   - Current status: "Working" (green badge)
-   - Two buttons: "Start Break" | "Clock Out"
-3. Taps "Start Break"
-4. Success toast
+---
 
-### Returning from Break
-1. Staff approaches, taps "Tap to Scan"
-2. Face recognized - overlay shows:
-   - Name and confidence
-   - Current status: "On Break" (yellow badge)
-   - Primary: "End Break" button
-   - Secondary: "Clock Out" link
-3. Taps "End Break"
-4. Success toast
+## Testing Checklist
+- [ ] Face detected shows overlay immediately (not after 2+ second delay)
+- [ ] Overlay stays visible for at least 8 seconds
+- [ ] Tapping "Clock In" creates attendance record with face_match_confidence
+- [ ] TodayRoster immediately updates from "Expected" to "On Duty"
+- [ ] Attendance page shows the clock-in record
+- [ ] No RLS policy errors in console
 
