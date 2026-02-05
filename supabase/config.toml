@@ -1,10 +1,10 @@
 project_id = "vnhckgvakqmakxxemswo"
  
- [functions.face-enroll]
- verify_jwt = true
- 
  [functions.face-search]
  verify_jwt = false
  
  [functions.manager-pin]
+ verify_jwt = false
+ 
+ [functions.face-enroll]
  verify_jwt = false
