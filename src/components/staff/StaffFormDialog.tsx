@@ -250,7 +250,11 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
                         <Input 
                           type="email"
                           placeholder="john@example.com" 
-                          {...field} 
+                          value={typeof field.value === 'string' ? field.value : ''}
+                          onChange={(e) => field.onChange(e.target.value)}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
                         />
                       </FormControl>
                       <FormMessage />
@@ -268,7 +272,11 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
                         <Input 
                           type="tel"
                           placeholder="07700 900123" 
-                          {...field} 
+                          value={typeof field.value === 'string' ? field.value : ''}
+                          onChange={(e) => field.onChange(e.target.value)}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
                         />
                       </FormControl>
                       <FormMessage />
