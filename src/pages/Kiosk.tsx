@@ -41,24 +41,28 @@ import { toast } from 'sonner';
    }, []);
  
   // Handle Face++ detection - store staffId and confidence for overlay
+  // IMPORTANT: Set state IMMEDIATELY before async fetch to avoid race condition
   const handleFaceDetected = async (staffId: string, confidence: number) => {
-     setIsProcessing(true);
+    // Set detection state IMMEDIATELY before async operation
     setDetectedStaffId(staffId);
     setDetectedConfidence(confidence);
+    setIsProcessing(true);
      
-     // Fetch staff details from public view
-    const { data, error } = await supabase
-       .from('staff_profiles_public')
-       .select('id, name, profile_photo_url')
-       .eq('id', staffId)
-      .single();
+    try {
+      // Fetch staff details from public view
+      const { data, error } = await supabase
+        .from('staff_profiles_public')
+        .select('id, name, profile_photo_url')
+        .eq('id', staffId)
+        .single();
       
-    setIsProcessing(false);
-    if (!error && data) {
-      setDetectedStaffName(data.name as string);
-      // Don't auto-open modal - let user use quick actions or wait
+      if (!error && data) {
+        setDetectedStaffName(data.name as string);
+      }
+    } finally {
+      setIsProcessing(false);
     }
-   };
+  };
  
    // Handle manager override success
   const handlePinVerified = (managerId: string) => {
@@ -108,39 +112,40 @@ import { toast } from 'sonner';
             staffId,
             faceConfidence: confidence,
           });
-          toast.success('Clocked in successfully!');
           break;
         case 'start_break':
           const recordForBreak = attendance.find(a => a.staff_id === staffId && a.status !== 'clocked_out');
           if (recordForBreak) {
             await startBreak.mutateAsync(recordForBreak.id);
-            toast.success('Break started - 30 minutes');
           }
           break;
         case 'end_break':
           const recordForEndBreak = attendance.find(a => a.staff_id === staffId && a.status === 'on_break');
           if (recordForEndBreak) {
             await endBreak.mutateAsync(recordForEndBreak.id);
-            toast.success('Break ended');
           }
           break;
         case 'clock_out':
           const recordForClockOut = attendance.find(a => a.staff_id === staffId && a.status !== 'clocked_out');
           if (recordForClockOut) {
             await clockOut.mutateAsync(recordForClockOut.id);
-            toast.success('Clocked out successfully!');
           }
           break;
       }
-      // Refetch attendance to update roster
-      refetch();
-      // Clear detected staff after action
-      setTimeout(() => {
-        setDetectedStaffId(null);
-        setDetectedConfidence(null);
-        setDetectedStaffName(null);
-      }, 2000);
+      
+      // Give the mutation time to propagate to the database
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Force refetch attendance data to update both Kiosk and TodayRoster
+      await refetch();
+      
+      // Clear detection state after successful action
+      setDetectedStaffId(null);
+      setDetectedConfidence(null);
+      setDetectedStaffName(null);
+      
     } catch (error) {
+      console.error('[Kiosk] Quick action failed:', error);
       toast.error('Action failed. Please try again.');
     }
   };
