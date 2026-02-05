@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { AttendanceRecord } from '@/types/attendance';
  import { format } from 'date-fns';
  import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
  
  export default function Kiosk() {
   const navigate = useNavigate();
@@ -25,8 +26,11 @@ import { AttendanceRecord } from '@/types/attendance';
    } | null>(null);
    const [isProcessing, setIsProcessing] = useState(false);
    const [detectedStaffName, setDetectedStaffName] = useState<string | null>(null);
+  const [detectedStaffId, setDetectedStaffId] = useState<string | null>(null);
+  const [detectedConfidence, setDetectedConfidence] = useState<number | null>(null);
+  const [managerOverrideId, setManagerOverrideId] = useState<string | null>(null);
  
-   const { getActiveRecord, attendance } = useAttendance();
+  const { getActiveRecord, attendance, clockIn, startBreak, endBreak, clockOut, refetch } = useAttendance();
  
    // Update time every second
    useEffect(() => {
@@ -36,35 +40,33 @@ import { AttendanceRecord } from '@/types/attendance';
      return () => clearInterval(timer);
    }, []);
  
-   // Handle Face++ detection
-   const handleFaceDetected = (staffId: string, confidence: number) => {
+  // Handle Face++ detection - store staffId and confidence for overlay
+  const handleFaceDetected = async (staffId: string, confidence: number) => {
      setIsProcessing(true);
+    setDetectedStaffId(staffId);
+    setDetectedConfidence(confidence);
      
      // Fetch staff details from public view
-     supabase
+    const { data, error } = await supabase
        .from('staff_profiles_public')
        .select('id, name, profile_photo_url')
        .eq('id', staffId)
-       .single()
-       .then(({ data, error }) => {
-         setIsProcessing(false);
-         if (!error && data) {
-           setSelectedStaff({
-             id: data.id as string,
-             name: data.name as string,
-             photo: data.profile_photo_url as string | null,
-           });
-           setDetectedStaffName(data.name as string);
-         }
-       });
+      .single();
+      
+    setIsProcessing(false);
+    if (!error && data) {
+      setDetectedStaffName(data.name as string);
+      // Don't auto-open modal - let user use quick actions or wait
+    }
    };
  
    // Handle manager override success
-   const handlePinVerified = () => {
+  const handlePinVerified = (managerId: string) => {
     if (pinPadMode === 'exit') {
       setShowPinPad(false);
       navigate('/');
     } else {
+      setManagerOverrideId(managerId);
       setShowStaffSelect(true);
     }
   };
@@ -83,11 +85,71 @@ import { AttendanceRecord } from '@/types/attendance';
    const handleStaffSelected = (staff: { id: string; name: string; photo: string | null }) => {
      setSelectedStaff(staff);
      setShowStaffSelect(false);
+    setDetectedStaffId(staff.id);
+    setDetectedConfidence(null); // No face confidence for manual selection
    };
  
-    const activeRecord: AttendanceRecord | null = selectedStaff 
-      ? (attendance.find(a => a.staff_id === selectedStaff.id && a.status !== 'clocked_out') as AttendanceRecord | undefined) ?? null
+  // Get active record for selected or detected staff
+  const currentStaffId = selectedStaff?.id ?? detectedStaffId;
+  const activeRecord: AttendanceRecord | null = currentStaffId 
+    ? (attendance.find(a => a.staff_id === currentStaffId && a.status !== 'clocked_out') as AttendanceRecord | undefined) ?? null
      : null;
+
+  // Handle quick clock action from camera overlay
+  const handleQuickAction = async (
+    action: 'clock_in' | 'start_break' | 'end_break' | 'clock_out',
+    staffId: string,
+    confidence: number
+  ) => {
+    try {
+      switch (action) {
+        case 'clock_in':
+          await clockIn.mutateAsync({
+            staffId,
+            faceConfidence: confidence,
+          });
+          toast.success('Clocked in successfully!');
+          break;
+        case 'start_break':
+          const recordForBreak = attendance.find(a => a.staff_id === staffId && a.status !== 'clocked_out');
+          if (recordForBreak) {
+            await startBreak.mutateAsync(recordForBreak.id);
+            toast.success('Break started - 30 minutes');
+          }
+          break;
+        case 'end_break':
+          const recordForEndBreak = attendance.find(a => a.staff_id === staffId && a.status === 'on_break');
+          if (recordForEndBreak) {
+            await endBreak.mutateAsync(recordForEndBreak.id);
+            toast.success('Break ended');
+          }
+          break;
+        case 'clock_out':
+          const recordForClockOut = attendance.find(a => a.staff_id === staffId && a.status !== 'clocked_out');
+          if (recordForClockOut) {
+            await clockOut.mutateAsync(recordForClockOut.id);
+            toast.success('Clocked out successfully!');
+          }
+          break;
+      }
+      // Refetch attendance to update roster
+      refetch();
+      // Clear detected staff after action
+      setTimeout(() => {
+        setDetectedStaffId(null);
+        setDetectedConfidence(null);
+        setDetectedStaffName(null);
+      }, 2000);
+    } catch (error) {
+      toast.error('Action failed. Please try again.');
+    }
+  };
+
+  // Clear manager override after modal closes
+  const handleModalClose = () => {
+    setSelectedStaff(null);
+    setManagerOverrideId(null);
+  };
  
    return (
      <div className="min-h-screen bg-sidebar text-sidebar-foreground">
@@ -149,6 +211,10 @@ import { AttendanceRecord } from '@/types/attendance';
                onFaceDetected={handleFaceDetected}
                isProcessing={isProcessing}
                staffName={detectedStaffName}
+                detectedStaffId={detectedStaffId}
+                detectedConfidence={detectedConfidence}
+                activeRecord={activeRecord}
+                onQuickAction={handleQuickAction}
              />
            </div>
          </div>
@@ -177,11 +243,15 @@ import { AttendanceRecord } from '@/types/attendance';
        {selectedStaff && (
          <ClockActionModal
            open={!!selectedStaff}
-           onOpenChange={(open) => !open && setSelectedStaff(null)}
+          onOpenChange={(open) => !open && handleModalClose()}
            staffId={selectedStaff.id}
            staffName={selectedStaff.name}
            staffPhoto={selectedStaff.photo}
             activeRecord={activeRecord}
+          faceConfidence={detectedConfidence ?? undefined}
+          overrideManagerId={managerOverrideId ?? undefined}
+          isManagerOverride={!!managerOverrideId}
+          onActionComplete={handleModalClose}
          />
        )}
      </div>

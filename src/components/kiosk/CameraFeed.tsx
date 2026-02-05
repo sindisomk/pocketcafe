@@ -1,16 +1,30 @@
  import { Suspense, useState, useEffect, useRef, useCallback } from 'react';
- import { Camera, CameraOff, Loader2, User } from 'lucide-react';
- import { Card, CardContent } from '@/components/ui/card';
+import { Camera, CameraOff, Loader2, LogIn, LogOut, Coffee, Clock } from 'lucide-react';
  import { Button } from '@/components/ui/button';
  import { cn } from '@/lib/utils';
+import { AttendanceRecord } from '@/types/attendance';
+
+type ClockAction = 'clock_in' | 'start_break' | 'end_break' | 'clock_out';
  
  interface CameraFeedProps {
    onFaceDetected: (staffId: string, confidence: number) => void;
    isProcessing: boolean;
    staffName?: string | null;
+  detectedStaffId?: string | null;
+  detectedConfidence?: number | null;
+  activeRecord?: AttendanceRecord | null;
+  onQuickAction?: (action: ClockAction, staffId: string, confidence: number) => void;
  }
  
- function CameraFeedContent({ onFaceDetected, isProcessing, staffName }: CameraFeedProps) {
+function CameraFeedContent({ 
+  onFaceDetected, 
+  isProcessing, 
+  staffName,
+  detectedStaffId,
+  detectedConfidence,
+  activeRecord,
+  onQuickAction,
+}: CameraFeedProps) {
    const videoRef = useRef<HTMLVideoElement>(null);
    const lastSearchRef = useRef<number>(0);
    const searchCooldownRef = useRef<boolean>(false);
@@ -19,6 +33,7 @@
    const [cameraError, setCameraError] = useState<string | null>(null);
    const [scanningStatus, setScanningStatus] = useState<'idle' | 'scanning' | 'detected'>('idle');
    const [statusMessage, setStatusMessage] = useState('Position your face in the frame');
+  const [lastDetectedConfidence, setLastDetectedConfidence] = useState<number | null>(null);
  
    useEffect(() => {
      let stream: MediaStream | null = null;
@@ -92,6 +107,7 @@
        if (data.matched && data.staffId && data.confidence) {
          setScanningStatus('detected');
          setStatusMessage(`Welcome, ${data.staffName}!`);
+          setLastDetectedConfidence(data.confidence);
          
          // Set match cooldown to prevent re-detection for 5 seconds
          matchCooldownRef.current = true;
@@ -99,6 +115,7 @@
            matchCooldownRef.current = false;
            setScanningStatus('idle');
            setStatusMessage('Position your face in the frame');
+            setLastDetectedConfidence(null);
          }, 5000);
  
          onFaceDetected(data.staffId, data.confidence);
@@ -131,6 +148,20 @@
      return () => clearInterval(interval);
    }, [cameraActive, isProcessing, captureAndSearch]);
  
+  // Quick action handlers
+  const handleQuickAction = (action: ClockAction) => {
+    if (detectedStaffId && onQuickAction) {
+      const confidence = detectedConfidence ?? lastDetectedConfidence ?? 0;
+      onQuickAction(action, detectedStaffId, confidence);
+    }
+  };
+
+  // Determine available actions based on current status
+  const canClockIn = !activeRecord;
+  const canStartBreak = activeRecord?.status === 'clocked_in' && !activeRecord.break_start_time;
+  const canEndBreak = activeRecord?.status === 'on_break';
+  const canClockOut = activeRecord && activeRecord.status !== 'clocked_out';
+
    return (
      <div className="relative w-full h-full min-h-[400px] bg-sidebar rounded-lg overflow-hidden">
        {cameraError ? (
@@ -187,6 +218,64 @@
                    {statusMessage}
                  </p>
                </div>
+
+              {/* Quick action overlay when face detected */}
+              {scanningStatus === 'detected' && detectedStaffId && onQuickAction && (
+                <div className="absolute bottom-20 left-1/2 -translate-x-1/2 pointer-events-auto">
+                  <div className="bg-background/95 backdrop-blur-sm rounded-xl p-4 shadow-2xl border border-border min-w-[280px]">
+                    <div className="text-center mb-3">
+                      <p className="font-semibold text-foreground">{staffName}</p>
+                      {lastDetectedConfidence && (
+                        <p className="text-xs text-muted-foreground">
+                          Confidence: {Math.round(lastDetectedConfidence)}%
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2 justify-center flex-wrap">
+                      {canClockIn && (
+                        <Button
+                          size="sm"
+                          className="bg-success hover:bg-success/90 text-success-foreground"
+                          onClick={() => handleQuickAction('clock_in')}
+                        >
+                          <LogIn className="h-4 w-4 mr-1" />
+                          Clock In
+                        </Button>
+                      )}
+                      {canStartBreak && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="bg-warning hover:bg-warning/90 text-warning-foreground"
+                          onClick={() => handleQuickAction('start_break')}
+                        >
+                          <Coffee className="h-4 w-4 mr-1" />
+                          Break
+                        </Button>
+                      )}
+                      {canEndBreak && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleQuickAction('end_break')}
+                        >
+                          <Clock className="h-4 w-4 mr-1" />
+                          End Break
+                        </Button>
+                      )}
+                      {canClockOut && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleQuickAction('clock_out')}
+                        >
+                          <LogOut className="h-4 w-4 mr-1" />
+                          Clock Out
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
              </div>
            )}
  
