@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Shift, ShiftWithStaff, WeeklySchedule, SHIFT_TIMES, getEveningEndTime } from '@/types/schedule';
 import { toast } from 'sonner';
 import { format, startOfWeek, addDays } from 'date-fns';
+import { queryKeys } from '@/lib/queryKeys';
 
 export function useSchedule(weekStartDate: Date) {
   const queryClient = useQueryClient();
@@ -10,7 +11,7 @@ export function useSchedule(weekStartDate: Date) {
 
   // Fetch weekly schedule
   const scheduleQuery = useQuery({
-    queryKey: ['weekly-schedule', weekStart],
+    queryKey: queryKeys.weeklySchedule(weekStart),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('weekly_schedules')
@@ -25,7 +26,7 @@ export function useSchedule(weekStartDate: Date) {
 
   // Fetch shifts for the week with staff info
   const shiftsQuery = useQuery({
-    queryKey: ['shifts', weekStart],
+    queryKey: queryKeys.shifts(weekStart),
     queryFn: async () => {
       const weekEnd = format(addDays(new Date(weekStart), 6), 'yyyy-MM-dd');
       
@@ -73,7 +74,7 @@ export function useSchedule(weekStartDate: Date) {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['weekly-schedule', weekStart] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.weeklySchedule(weekStart) });
     },
   });
 
@@ -127,7 +128,10 @@ export function useSchedule(weekStartDate: Date) {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shifts', weekStart] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.shifts(weekStart) });
+      // Also invalidate today's shifts for TodayRoster
+      const today = format(new Date(), 'yyyy-MM-dd');
+      queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(today) });
     },
     onError: (error) => {
       if (error.message.includes('duplicate')) {
@@ -149,7 +153,9 @@ export function useSchedule(weekStartDate: Date) {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shifts', weekStart] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.shifts(weekStart) });
+      const today = format(new Date(), 'yyyy-MM-dd');
+      queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(today) });
     },
     onError: (error) => {
       toast.error(`Failed to remove shift: ${error.message}`);
@@ -177,7 +183,8 @@ export function useSchedule(weekStartDate: Date) {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['weekly-schedule', weekStart] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.weeklySchedule(weekStart) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.shifts(weekStart) });
       toast.success('Schedule published successfully!');
     },
     onError: (error) => {

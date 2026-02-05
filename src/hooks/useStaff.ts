@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { StaffProfile } from '@/types/staff';
+import { queryKeys } from '@/lib/queryKeys';
  
  interface StaffProfileWithFaceToken extends StaffProfile {
    face_token?: string | null;
@@ -11,7 +12,7 @@ export function useStaff() {
   const queryClient = useQueryClient();
 
   const staffQuery = useQuery({
-    queryKey: ['staff'],
+    queryKey: queryKeys.staff,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('staff_profiles')
@@ -35,7 +36,7 @@ export function useStaff() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.staff });
       toast.success('Staff member added successfully');
     },
     onError: (error) => {
@@ -56,7 +57,7 @@ export function useStaff() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.staff });
       toast.success('Staff member updated successfully');
     },
     onError: (error) => {
@@ -74,7 +75,7 @@ export function useStaff() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.staff });
       toast.success('Staff member removed successfully');
     },
     onError: (error) => {

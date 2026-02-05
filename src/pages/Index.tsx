@@ -10,6 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
  import { format, startOfWeek } from 'date-fns';
  import { Link } from 'react-router-dom';
  import { useMemo } from 'react';
+ import { ConnectionStatus } from '@/components/system/ConnectionStatus';
+ import { PageLoadingSkeleton } from '@/components/ui/loading-states';
 
 export default function Index() {
    const { attendance, isLoading: attendanceLoading } = useAttendance();
@@ -51,14 +53,27 @@ export default function Index() {
    const currentShift = currentHour < 15 ? 'Morning' : 'Evening';
    const shiftTime = currentHour < 15 ? '08:00 – 15:00' : '15:00 – 22:00';
  
+  const isLoading = attendanceLoading;
+
+  if (isLoading) {
+    return (
+      <AppLayout>
+        <PageLoadingSkeleton />
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-             {format(new Date(), 'EEEE, MMMM d, yyyy')} • PocketCafe Management
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+               {format(new Date(), 'EEEE, MMMM d, yyyy')} • PocketCafe Management
+            </p>
+          </div>
+          <ConnectionStatus showLastSync />
         </div>
 
          {/* Compliance Warnings Banner */}
