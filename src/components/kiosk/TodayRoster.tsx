@@ -11,6 +11,7 @@
  import { ShiftWithStaff } from '@/types/schedule';
  import { Skeleton } from '@/components/ui/skeleton';
  import { cn } from '@/lib/utils';
+ import { queryKeys } from '@/lib/queryKeys';
  
  interface RosterStaff {
    id: string;
@@ -29,8 +30,8 @@
    const today = new Date();
    const todayStr = format(today, 'yyyy-MM-dd');
  
-   const { data: shifts = [], isLoading: shiftsLoading } = useQuery({
-     queryKey: ['shifts-today', todayStr],
+  const { data: shifts = [], isLoading: shiftsLoading } = useQuery({
+    queryKey: queryKeys.shiftsToday(todayStr),
      queryFn: async () => {
        const { data, error } = await supabase
          .from('shifts')

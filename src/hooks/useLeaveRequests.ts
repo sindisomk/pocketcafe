@@ -2,12 +2,13 @@
  import { supabase } from '@/integrations/supabase/client';
  import { LeaveRequest, LeaveRequestWithStaff, LeaveStatus } from '@/types/attendance';
  import { toast } from 'sonner';
+ import { queryKeys } from '@/lib/queryKeys';
  
  export function useLeaveRequests() {
    const queryClient = useQueryClient();
  
    const leaveQuery = useQuery({
-     queryKey: ['leave-requests'],
+     queryKey: queryKeys.leaveRequests,
      queryFn: async () => {
        const { data, error } = await supabase
          .from('leave_requests')
@@ -47,9 +48,9 @@
        if (error) throw error;
        return data;
      },
-     onSuccess: () => {
-       queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
-       toast.success('Leave request submitted');
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leaveRequests });
+      toast.success('Leave request submitted');
      },
      onError: (error) => {
        toast.error(`Failed to submit leave request: ${error.message}`);
@@ -83,9 +84,9 @@
        if (error) throw error;
        return data;
      },
-     onSuccess: (_, variables) => {
-       queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
-       toast.success(`Leave request ${variables.status}`);
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leaveRequests });
+      toast.success(`Leave request ${variables.status}`);
      },
      onError: (error) => {
        toast.error(`Failed to update leave request: ${error.message}`);

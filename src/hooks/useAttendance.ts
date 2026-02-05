@@ -3,6 +3,7 @@
  import { AttendanceRecord, AttendanceRecordWithStaff } from '@/types/attendance';
  import { toast } from 'sonner';
  import { format } from 'date-fns';
+ import { queryKeys } from '@/lib/queryKeys';
  
 interface ClockInParams {
   staffId: string;
@@ -17,7 +18,7 @@ interface ClockInParams {
    const dateStr = format(targetDate, 'yyyy-MM-dd');
  
    const attendanceQuery = useQuery({
-     queryKey: ['attendance', dateStr],
+     queryKey: queryKeys.attendance(dateStr),
      queryFn: async () => {
        const startOfDay = `${dateStr}T00:00:00`;
        const endOfDay = `${dateStr}T23:59:59`;
@@ -60,7 +61,9 @@ interface ClockInParams {
        return data;
      },
      onSuccess: () => {
-       queryClient.invalidateQueries({ queryKey: ['attendance'] });
+       queryClient.invalidateQueries({ queryKey: queryKeys.attendance(dateStr) });
+       // Also invalidate shifts-today for TodayRoster
+       queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(dateStr) });
        toast.success('Successfully clocked in!');
      },
      onError: (error) => {
@@ -84,7 +87,8 @@ interface ClockInParams {
        return data;
      },
      onSuccess: () => {
-       queryClient.invalidateQueries({ queryKey: ['attendance'] });
+       queryClient.invalidateQueries({ queryKey: queryKeys.attendance(dateStr) });
+       queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(dateStr) });
        toast.success('Break started - 30 minutes');
      },
      onError: (error) => {
@@ -108,7 +112,8 @@ interface ClockInParams {
        return data;
      },
      onSuccess: () => {
-       queryClient.invalidateQueries({ queryKey: ['attendance'] });
+       queryClient.invalidateQueries({ queryKey: queryKeys.attendance(dateStr) });
+       queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(dateStr) });
        toast.success('Break ended');
      },
      onError: (error) => {
@@ -132,7 +137,8 @@ interface ClockInParams {
        return data;
      },
      onSuccess: () => {
-       queryClient.invalidateQueries({ queryKey: ['attendance'] });
+       queryClient.invalidateQueries({ queryKey: queryKeys.attendance(dateStr) });
+       queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(dateStr) });
        toast.success('Successfully clocked out!');
      },
      onError: (error) => {

@@ -2,13 +2,14 @@
  import { supabase } from '@/integrations/supabase/client';
  import { AttendanceRecord } from '@/types/attendance';
  import { format } from 'date-fns';
+ import { queryKeys } from '@/lib/queryKeys';
  
  export function usePayrollData(startDate: Date, endDate: Date) {
    const startStr = format(startDate, 'yyyy-MM-dd');
    const endStr = format(endDate, 'yyyy-MM-dd');
  
    const attendanceQuery = useQuery({
-     queryKey: ['payroll-attendance', startStr, endStr],
+     queryKey: queryKeys.payrollAttendance(startStr, endStr),
      queryFn: async () => {
        const { data, error } = await supabase
          .from('attendance_records')
