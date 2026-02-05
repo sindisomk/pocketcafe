@@ -63,15 +63,11 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
 
  const staffFormSchema = z.object({
    name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100, 'Name must be less than 100 characters'),
-  contact_email: z.string().max(255).optional().or(z.literal('')),
+  contact_email: z.string().max(255).default(''),
   contact_phone: z
     .string()
-    .transform((val) => val.replace(/\s/g, ''))
-    .refine((val) => val === '' || ukPhoneRegex.test(val), {
-      message: 'Invalid UK phone number',
-    })
-    .optional()
-    .or(z.literal('')),
+    .max(20)
+    .default(''),
   role: z.enum(['kitchen', 'floor', 'management', 'bar'] as const),
   job_title: z.enum([
     'server', 'host', 'bartender', 'barback', 'busser', 'food_runner',
@@ -82,16 +78,15 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
   start_date: z.date().optional(),
    contract_type: z.enum(['salaried', 'zero_rate'] as const),
    hourly_rate: z.coerce.number().min(0, 'Hourly rate must be positive').max(500, 'Hourly rate seems too high'),
-   ni_number: z
+  ni_number: z
      .string()
      .transform((val) => val.replace(/\s/g, '').toUpperCase())
      .refine((val) => val === '' || niNumberRegex.test(val), {
        message: 'Invalid UK NI number format (e.g., AB123456C)',
      })
-     .optional()
-     .or(z.literal('')),
-  tax_code: z.string().max(20).optional().or(z.literal('')),
-  nic_category: z.string().max(1).optional().or(z.literal('')),
+    .default(''),
+  tax_code: z.string().max(20).default('1257L'),
+  nic_category: z.string().max(1).default('A'),
  });
  
  type StaffFormValues = z.infer<typeof staffFormSchema>;
@@ -250,11 +245,8 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
                         <Input 
                           type="email"
                           placeholder="john@example.com" 
-                          value={typeof field.value === 'string' ? field.value : ''}
-                          onChange={(e) => field.onChange(e.target.value)}
-                          onBlur={field.onBlur}
-                          name={field.name}
-                          ref={field.ref}
+                          {...field}
+                          value={field.value ?? ''}
                         />
                       </FormControl>
                       <FormMessage />
@@ -272,11 +264,8 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
                         <Input 
                           type="tel"
                           placeholder="07700 900123" 
-                          value={typeof field.value === 'string' ? field.value : ''}
-                          onChange={(e) => field.onChange(e.target.value)}
-                          onBlur={field.onBlur}
-                          name={field.name}
-                          ref={field.ref}
+                          {...field}
+                          value={field.value ?? ''}
                         />
                       </FormControl>
                       <FormMessage />
