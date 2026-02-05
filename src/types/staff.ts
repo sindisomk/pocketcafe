@@ -77,6 +77,8 @@ export interface StaffProfile {
   contact_phone: string | null;
   start_date: string | null;
   hourly_rate: number;
+  tax_code: string | null;
+  nic_category: string | null;
   created_at: string;
   updated_at: string;
 }

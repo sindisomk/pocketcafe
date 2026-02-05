@@ -42,12 +42,28 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
  // UK National Insurance Number format validation
  const niNumberRegex = /^[A-CEGHJ-PR-TW-Z]{2}\d{6}[A-D]$/i;
  
-// UK phone number validation (basic)
-const ukPhoneRegex = /^(\+44|0)[1-9]\d{8,9}$/;
+ // UK phone number validation (basic) - allows optional
+ const ukPhoneRegex = /^(\+44|0)[1-9]\d{8,9}$/;
+ 
+ // Common UK tax codes
+ const UK_TAX_CODES = ['1257L', '1257L-W1', '1257L-M1', 'BR', 'D0', 'D1', '0T', 'NT', 'S1257L', 'C1257L'];
+ 
+ // NIC Categories
+ const NIC_CATEGORIES = [
+   { value: 'A', label: 'A - Standard rate (most employees)' },
+   { value: 'B', label: 'B - Married women reduced rate' },
+   { value: 'C', label: 'C - Over State Pension age' },
+   { value: 'F', label: 'F - Freeport standard rate' },
+   { value: 'H', label: 'H - Apprentice under 25' },
+   { value: 'J', label: 'J - Deferment (multiple jobs)' },
+   { value: 'M', label: 'M - Under 21' },
+   { value: 'V', label: 'V - Veteran first year' },
+   { value: 'Z', label: 'Z - Under 21 deferment' },
+ ];
 
  const staffFormSchema = z.object({
    name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100, 'Name must be less than 100 characters'),
-  contact_email: z.string().email('Invalid email address').optional().or(z.literal('')),
+  contact_email: z.string().max(255).optional().or(z.literal('')),
   contact_phone: z
     .string()
     .transform((val) => val.replace(/\s/g, ''))
@@ -74,7 +90,8 @@ const ukPhoneRegex = /^(\+44|0)[1-9]\d{8,9}$/;
      })
      .optional()
      .or(z.literal('')),
-   profile_photo_url: z.string().url().optional().or(z.literal('')),
+  tax_code: z.string().max(20).optional().or(z.literal('')),
+  nic_category: z.string().max(1).optional().or(z.literal('')),
  });
  
  type StaffFormValues = z.infer<typeof staffFormSchema>;
@@ -114,7 +131,8 @@ const ukPhoneRegex = /^(\+44|0)[1-9]\d{8,9}$/;
        contract_type: 'zero_rate',
        hourly_rate: 11.44, // UK National Living Wage 2024 (21+)
        ni_number: '',
-       profile_photo_url: '',
+        tax_code: '1257L',
+        nic_category: 'A',
      },
    });
  
@@ -137,7 +155,8 @@ const ukPhoneRegex = /^(\+44|0)[1-9]\d{8,9}$/;
            contract_type: staff.contract_type,
            hourly_rate: staff.hourly_rate,
            ni_number: staff.ni_number ?? '',
-           profile_photo_url: staff.profile_photo_url ?? '',
+            tax_code: staff.tax_code ?? '1257L',
+            nic_category: staff.nic_category ?? 'A',
          });
        } else {
          form.reset({
@@ -150,7 +169,8 @@ const ukPhoneRegex = /^(\+44|0)[1-9]\d{8,9}$/;
            contract_type: 'zero_rate',
            hourly_rate: 11.44,
            ni_number: '',
-           profile_photo_url: '',
+            tax_code: '1257L',
+            nic_category: 'A',
          });
        }
      }
@@ -169,7 +189,9 @@ const ukPhoneRegex = /^(\+44|0)[1-9]\d{8,9}$/;
          contract_type: values.contract_type,
          hourly_rate: values.hourly_rate,
          ni_number: values.ni_number || null,
-         profile_photo_url: values.profile_photo_url || null,
+        tax_code: values.tax_code || null,
+        nic_category: values.nic_category || null,
+        profile_photo_url: null,
          user_id: staff?.user_id ?? null,
        };
  
@@ -275,28 +297,70 @@ const ukPhoneRegex = /^(\+44|0)[1-9]\d{8,9}$/;
                    </FormItem>
                  )}
                />
- 
-               <FormField
-                 control={form.control}
-                 name="profile_photo_url"
-                 render={({ field }) => (
-                   <FormItem>
-                     <FormLabel>Profile Photo URL</FormLabel>
-                     <FormControl>
-                       <Input 
-                         placeholder="https://example.com/photo.jpg" 
-                         type="url"
-                         {...field} 
-                       />
-                     </FormControl>
-                     <FormDescription>
-                       Optional: URL to employee profile photo
-                     </FormDescription>
-                     <FormMessage />
-                   </FormItem>
-                 )}
-               />
              </div>
+
+              {/* Tax & NIC Information */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Tax & National Insurance</h3>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="tax_code"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tax Code (PAYE)</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || '1257L'}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select tax code" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {UK_TAX_CODES.map((code) => (
+                              <SelectItem key={code} value={code}>
+                                {code}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          HMRC tax code for PAYE deductions
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="nic_category"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>NIC Category</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || 'A'}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select NIC category" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {NIC_CATEGORIES.map((cat) => (
+                              <SelectItem key={cat.value} value={cat.value}>
+                                {cat.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          NI contributions above £737/month
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
  
              {/* Employment Details */}
              <div className="space-y-4">
