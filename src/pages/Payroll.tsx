@@ -1,0 +1,279 @@
+ import { useState, useMemo } from 'react';
+ import { format, startOfWeek, endOfWeek, subWeeks, addWeeks } from 'date-fns';
+ import { 
+   PoundSterling, 
+   Download, 
+   ChevronLeft, 
+   ChevronRight, 
+   AlertTriangle,
+   Clock,
+   Coffee,
+   Calculator
+ } from 'lucide-react';
+ import { AppLayout } from '@/components/layout/AppLayout';
+ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+ import { Button } from '@/components/ui/button';
+ import { Badge } from '@/components/ui/badge';
+ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+ import { Separator } from '@/components/ui/separator';
+ import { useStaff } from '@/hooks/useStaff';
+ import { useSchedule } from '@/hooks/useSchedule';
+ import { usePayrollData } from '@/hooks/usePayrollData';
+ import { generatePayrollSummary, checkRestPeriodViolations, exportPayrollCSV } from '@/lib/payroll';
+ import { ComplianceWarningCard } from '@/components/payroll/ComplianceWarningCard';
+ import { Skeleton } from '@/components/ui/skeleton';
+ 
+ export default function Payroll() {
+   const [weekOffset, setWeekOffset] = useState(0);
+   
+   const currentWeekStart = startOfWeek(
+     weekOffset === 0 ? new Date() : addWeeks(new Date(), weekOffset),
+     { weekStartsOn: 1 }
+   );
+   const currentWeekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 });
+ 
+   const { staff, isLoading: staffLoading } = useStaff();
+   const { shifts, isLoading: shiftsLoading } = useSchedule(currentWeekStart);
+   const { attendanceRecords, isLoading: attendanceLoading } = usePayrollData(
+     currentWeekStart,
+     currentWeekEnd
+   );
+ 
+   const isLoading = staffLoading || shiftsLoading || attendanceLoading;
+ 
+   // Generate payroll summaries for all staff
+   const payrollSummaries = useMemo(() => {
+     return staff.map((s) => generatePayrollSummary(s, attendanceRecords));
+   }, [staff, attendanceRecords]);
+ 
+   // Check for UK compliance violations
+   const complianceWarnings = useMemo(() => {
+     return checkRestPeriodViolations(shifts, staff);
+   }, [shifts, staff]);
+ 
+   // Calculate totals
+   const totals = useMemo(() => {
+     return {
+       hours: payrollSummaries.reduce((sum, s) => sum + s.totalHoursWorked, 0),
+       grossPay: payrollSummaries.reduce((sum, s) => sum + s.grossPay, 0),
+       holidayAccrual: payrollSummaries.reduce((sum, s) => sum + s.holidayAccrual, 0),
+     };
+   }, [payrollSummaries]);
+ 
+   // Export to CSV
+   const handleExportCSV = () => {
+     const csvContent = exportPayrollCSV(
+       payrollSummaries.filter((s) => s.totalHoursWorked > 0),
+       format(currentWeekStart, 'yyyy-MM-dd'),
+       format(currentWeekEnd, 'yyyy-MM-dd')
+     );
+ 
+     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+     const link = document.createElement('a');
+     link.href = URL.createObjectURL(blob);
+     link.download = `payroll-${format(currentWeekStart, 'yyyy-MM-dd')}.csv`;
+     link.click();
+   };
+ 
+   return (
+     <AppLayout>
+       <div className="space-y-6">
+         {/* Header */}
+         <div className="flex items-center justify-between">
+           <div>
+             <h1 className="text-2xl font-bold text-foreground">Payroll</h1>
+             <p className="text-sm text-muted-foreground mt-1">
+               Calculate hours, pay, and holiday accrual (12.07% for zero-hour contracts)
+             </p>
+           </div>
+ 
+           <div className="flex items-center gap-3">
+             {/* Week navigation */}
+             <div className="flex items-center gap-2 bg-muted rounded-lg p-1">
+               <Button
+                 variant="ghost"
+                 size="icon"
+                 className="h-8 w-8"
+                 onClick={() => setWeekOffset((prev) => prev - 1)}
+               >
+                 <ChevronLeft className="h-4 w-4" />
+               </Button>
+               <span className="px-3 text-sm font-medium">
+                 {format(currentWeekStart, 'MMM d')} - {format(currentWeekEnd, 'MMM d, yyyy')}
+               </span>
+               <Button
+                 variant="ghost"
+                 size="icon"
+                 className="h-8 w-8"
+                 onClick={() => setWeekOffset((prev) => prev + 1)}
+                 disabled={weekOffset >= 0}
+               >
+                 <ChevronRight className="h-4 w-4" />
+               </Button>
+             </div>
+ 
+             <Button onClick={handleExportCSV}>
+               <Download className="h-4 w-4 mr-2" />
+               Export CSV
+             </Button>
+           </div>
+         </div>
+ 
+         {/* Compliance Warnings */}
+         {complianceWarnings.length > 0 && (
+           <Card className="border-warning bg-warning/5">
+             <CardHeader className="pb-3">
+               <CardTitle className="flex items-center gap-2 text-warning">
+                 <AlertTriangle className="h-5 w-5" />
+                 UK Compliance Warnings
+               </CardTitle>
+               <CardDescription>
+                 The following shifts may violate UK Working Time Regulations
+               </CardDescription>
+             </CardHeader>
+             <CardContent>
+               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                 {complianceWarnings.map((warning, index) => (
+                   <ComplianceWarningCard key={index} warning={warning} />
+                 ))}
+               </div>
+             </CardContent>
+           </Card>
+         )}
+ 
+         {/* Summary Cards */}
+         <div className="grid gap-4 sm:grid-cols-3">
+           <Card>
+             <CardHeader className="pb-2">
+               <CardDescription className="flex items-center gap-2">
+                 <Clock className="h-4 w-4" />
+                 Total Hours
+               </CardDescription>
+             </CardHeader>
+             <CardContent>
+               <p className="text-3xl font-bold">{totals.hours.toFixed(1)}</p>
+               <p className="text-sm text-muted-foreground">hours worked</p>
+             </CardContent>
+           </Card>
+ 
+           <Card>
+             <CardHeader className="pb-2">
+               <CardDescription className="flex items-center gap-2">
+                 <PoundSterling className="h-4 w-4" />
+                 Gross Pay
+               </CardDescription>
+             </CardHeader>
+             <CardContent>
+               <p className="text-3xl font-bold">£{totals.grossPay.toFixed(2)}</p>
+               <p className="text-sm text-muted-foreground">total wages</p>
+             </CardContent>
+           </Card>
+ 
+           <Card>
+             <CardHeader className="pb-2">
+               <CardDescription className="flex items-center gap-2">
+                 <Coffee className="h-4 w-4" />
+                 Holiday Accrual
+               </CardDescription>
+             </CardHeader>
+             <CardContent>
+               <p className="text-3xl font-bold">£{totals.holidayAccrual.toFixed(2)}</p>
+               <p className="text-sm text-muted-foreground">12.07% for zero-hour</p>
+             </CardContent>
+           </Card>
+         </div>
+ 
+         {/* Payroll Table */}
+         <Card>
+           <CardHeader>
+             <CardTitle className="flex items-center gap-2">
+               <Calculator className="h-5 w-5" />
+               Staff Payroll Breakdown
+             </CardTitle>
+             <CardDescription>
+               Includes 30-minute paid break per shift as per company policy
+             </CardDescription>
+           </CardHeader>
+           <CardContent>
+             {isLoading ? (
+               <div className="space-y-3">
+                 {[1, 2, 3].map((i) => (
+                   <Skeleton key={i} className="h-12 w-full" />
+                 ))}
+               </div>
+             ) : (
+               <Table>
+                 <TableHeader>
+                   <TableRow>
+                     <TableHead>Staff Member</TableHead>
+                     <TableHead className="text-right">Total Hours</TableHead>
+                     <TableHead className="text-right">Paid Breaks</TableHead>
+                     <TableHead className="text-right">Rate (£/hr)</TableHead>
+                     <TableHead className="text-right">Gross Pay</TableHead>
+                     <TableHead className="text-right">Holiday Accrual</TableHead>
+                   </TableRow>
+                 </TableHeader>
+                 <TableBody>
+                   {payrollSummaries
+                     .filter((s) => s.totalHoursWorked > 0)
+                     .map((summary) => {
+                       const staffMember = staff.find((s) => s.id === summary.staffId);
+                       return (
+                         <TableRow key={summary.staffId}>
+                           <TableCell>
+                             <div className="flex items-center gap-2">
+                               <span className="font-medium">{summary.staffName}</span>
+                               {staffMember?.contract_type === 'zero_rate' && (
+                                 <Badge variant="outline" className="text-xs">
+                                   Zero-hour
+                                 </Badge>
+                               )}
+                             </div>
+                           </TableCell>
+                           <TableCell className="text-right font-mono">
+                             {summary.totalHoursWorked.toFixed(2)}
+                           </TableCell>
+                           <TableCell className="text-right font-mono text-muted-foreground">
+                             {summary.paidBreakHours.toFixed(2)}
+                           </TableCell>
+                           <TableCell className="text-right font-mono">
+                             £{summary.hourlyRate.toFixed(2)}
+                           </TableCell>
+                           <TableCell className="text-right font-mono font-medium">
+                             £{summary.grossPay.toFixed(2)}
+                           </TableCell>
+                           <TableCell className="text-right font-mono">
+                             {summary.holidayAccrual > 0 ? (
+                               `£${summary.holidayAccrual.toFixed(2)}`
+                             ) : (
+                               <span className="text-muted-foreground">—</span>
+                             )}
+                           </TableCell>
+                         </TableRow>
+                       );
+                     })}
+                   
+                   {/* Totals row */}
+                   <TableRow className="bg-muted/50 font-medium">
+                     <TableCell>Total</TableCell>
+                     <TableCell className="text-right font-mono">
+                       {totals.hours.toFixed(2)}
+                     </TableCell>
+                     <TableCell />
+                     <TableCell />
+                     <TableCell className="text-right font-mono">
+                       £{totals.grossPay.toFixed(2)}
+                     </TableCell>
+                     <TableCell className="text-right font-mono">
+                       £{totals.holidayAccrual.toFixed(2)}
+                     </TableCell>
+                   </TableRow>
+                 </TableBody>
+               </Table>
+             )}
+           </CardContent>
+         </Card>
+       </div>
+     </AppLayout>
+   );
+ }
