@@ -31,7 +31,19 @@ export default function Index() {
  
    // Check for compliance warnings
    const complianceWarnings = useMemo(() => {
-     return checkRestPeriodViolations(shifts, staff);
+     // Map ShiftWithStaff to Shift for the compliance check
+     const shiftsForCheck = shifts.map(s => ({
+       id: s.id,
+       schedule_id: s.schedule_id,
+       staff_id: s.staff_id,
+       shift_date: s.shift_date,
+       shift_type: s.shift_type,
+       start_time: s.start_time,
+       end_time: s.end_time,
+       created_at: s.created_at,
+       updated_at: s.updated_at,
+     }));
+     return checkRestPeriodViolations(shiftsForCheck, staff);
    }, [shifts, staff]);
  
    // Get current shift type based on time
