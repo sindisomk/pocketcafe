@@ -1,4 +1,5 @@
  import { useState } from 'react';
+ import { useManagerPin } from '@/hooks/useManagerPin';
  import { KeyRound, Delete, Loader2, X } from 'lucide-react';
  import {
    Dialog,
@@ -38,6 +39,8 @@
      setError(null);
    };
  
+   const { verifyPin } = useManagerPin();
+ 
    const handleVerify = async () => {
      if (pin.length < 4) {
        setError('PIN must be at least 4 digits');
@@ -46,20 +49,21 @@
  
      setIsVerifying(true);
      
-     // In production, this would verify against manager_pins table
-     // For demo, accept any 4+ digit PIN
-     setTimeout(() => {
-       setIsVerifying(false);
+     try {
+       const result = await verifyPin(pin);
        
-       // Simulated verification (replace with actual Supabase check)
-       if (pin.length >= 4) {
+       if (result.valid) {
          onPinVerified();
          setPin('');
          onOpenChange(false);
        } else {
-         setError('Invalid PIN');
+         setError(result.error || 'Invalid PIN');
        }
-     }, 1000);
+     } catch {
+       setError('Verification failed. Please try again.');
+     } finally {
+       setIsVerifying(false);
+     }
    };
  
    const handleClose = () => {

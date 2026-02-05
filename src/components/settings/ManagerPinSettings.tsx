@@ -1,4 +1,5 @@
  import { useState } from 'react';
+ import { useManagerPin } from '@/hooks/useManagerPin';
  import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
  import { Label } from '@/components/ui/label';
  import { Input } from '@/components/ui/input';
@@ -18,13 +19,20 @@
    const pinsMatch = newPin === confirmPin;
    const canSubmit = isValid && pinsMatch && newPin.length > 0;
  
+   const { setPin } = useManagerPin();
+ 
    const handleSave = async () => {
      if (!canSubmit) return;
  
      setIsSubmitting(true);
      try {
-       // TODO: Save to manager_pins table with hashed PIN
-       await new Promise((resolve) => setTimeout(resolve, 500));
+       const result = await setPin(newPin, currentPin || undefined);
+       
+       if (result.error) {
+         toast.error(result.error);
+         return;
+       }
+       
        toast.success('Manager PIN updated successfully');
        setCurrentPin('');
        setNewPin('');
