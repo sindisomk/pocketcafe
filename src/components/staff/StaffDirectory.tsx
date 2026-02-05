@@ -58,9 +58,10 @@ export function StaffDirectory() {
         </div>
 
         {isAdmin && (
-          <Button className="gap-2">
+          <Button className="gap-2" disabled title="Coming soon">
             <Plus className="h-4 w-4" />
             Add Staff
+            {/* TODO: Implement Add Staff dialog in Phase 2 */}
           </Button>
         )}
       </div>

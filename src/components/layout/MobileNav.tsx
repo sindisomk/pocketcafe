@@ -1,4 +1,4 @@
-import { Users, LayoutDashboard, Calendar, Clock, Settings } from 'lucide-react';
+import { Users, LayoutDashboard, Calendar, Clock, Settings, CalendarDays, PoundSterling } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -7,6 +7,8 @@ const navItems = [
   { title: 'Staff', url: '/staff', icon: Users },
   { title: 'Schedule', url: '/schedule', icon: Calendar },
   { title: 'Attendance', url: '/attendance', icon: Clock },
+  { title: 'Leave', url: '/leave', icon: CalendarDays },
+  { title: 'Payroll', url: '/payroll', icon: PoundSterling },
   { title: 'Settings', url: '/settings', icon: Settings },
 ];
 
@@ -23,13 +25,13 @@ export function MobileNav() {
               key={item.title}
               to={item.url}
               className={cn(
-                "flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors min-w-[60px]",
+                "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-colors min-w-[48px]",
                 isActive
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <item.icon className="h-5 w-5" />
+              <item.icon className="h-4 w-4" />
               <span className="text-[10px] font-medium">{item.title}</span>
             </NavLink>
           );

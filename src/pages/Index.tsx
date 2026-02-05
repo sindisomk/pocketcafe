@@ -2,7 +2,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
  import { Badge } from '@/components/ui/badge';
  import { Button } from '@/components/ui/button';
- import { Users, Clock, Calendar, TrendingUp, AlertTriangle, PoundSterling, Coffee, ArrowRight } from 'lucide-react';
+ import { Users, Clock, Calendar, AlertTriangle, PoundSterling, Coffee, ArrowRight } from 'lucide-react';
  import { useAttendance } from '@/hooks/useAttendance';
  import { useStaff } from '@/hooks/useStaff';
  import { useSchedule } from '@/hooks/useSchedule';

@@ -11,7 +11,6 @@
  import { useAuth } from '@/hooks/useAuth';
  import { LeaveRequestDialog } from '@/components/leave/LeaveRequestDialog';
  import { LeaveConflictBadge } from '@/components/leave/LeaveConflictBadge';
- import { cn } from '@/lib/utils';
  
  export default function Leave() {
    const { leaveRequests, isLoading, updateLeaveStatus, getConflicts } = useLeaveRequests();
