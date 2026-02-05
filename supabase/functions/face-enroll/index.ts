@@ -107,7 +107,9 @@
      const faceToken = detectData.faces[0].face_token;
      console.log(`[face-enroll] Face token obtained: ${faceToken}`);
  
-     // Step 2: Ensure FaceSet exists (create if not)
+      // Step 2: Ensure FaceSet exists (create if needed)
+      let faceSetExists = false;
+      
      const getSetFormData = new FormData();
      getSetFormData.append("api_key", FACEPP_API_KEY);
      getSetFormData.append("api_secret", FACEPP_API_SECRET);
@@ -119,9 +121,14 @@
      });
  
      const getSetData = await getSetResponse.json();
+      console.log(`[face-enroll] FaceSet getdetail response:`, JSON.stringify(getSetData));
  
-     if (getSetData.error_message && getSetData.error_message.includes("FACESET_NOT_EXIST")) {
-       // Create the FaceSet
+      if (getSetData.faceset_token) {
+        // FaceSet exists
+        faceSetExists = true;
+        console.log(`[face-enroll] FaceSet already exists: ${FACESET_OUTER_ID}`);
+      } else if (getSetData.error_message) {
+        // FaceSet doesn't exist or other error - try to create it
        console.log(`[face-enroll] Creating FaceSet: ${FACESET_OUTER_ID}`);
        const createSetFormData = new FormData();
        createSetFormData.append("api_key", FACEPP_API_KEY);
@@ -137,10 +144,20 @@
        const createSetData = await createSetResponse.json();
        console.log(`[face-enroll] FaceSet created:`, JSON.stringify(createSetData));
  
-       if (!createSetResponse.ok && !createSetData.faceset_token) {
+        if (createSetData.faceset_token) {
+          faceSetExists = true;
+        } else if (createSetData.error_message?.includes("FACESET_EXIST")) {
+          // FaceSet already exists (race condition)
+          faceSetExists = true;
+          console.log(`[face-enroll] FaceSet already existed (race condition)`);
+        } else {
          throw new Error(`Failed to create FaceSet: ${JSON.stringify(createSetData)}`);
        }
      }
+ 
+      if (!faceSetExists) {
+        throw new Error("FaceSet could not be verified or created");
+      }
  
      // Step 3: Add face to FaceSet
      const addFaceFormData = new FormData();
