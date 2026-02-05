@@ -14,47 +14,57 @@
 import { AttendanceRecord } from '@/types/attendance';
  import { cn } from '@/lib/utils';
  
- interface ClockActionModalProps {
-   open: boolean;
-   onOpenChange: (open: boolean) => void;
-   staffId: string;
-   staffName: string;
-   staffPhoto: string | null;
+interface ClockActionModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  staffId: string;
+  staffName: string;
+  staffPhoto: string | null;
   activeRecord: AttendanceRecord | null;
   faceConfidence?: number;
   overrideManagerId?: string;
   isManagerOverride?: boolean;
   onActionComplete?: () => void;
- }
- 
- export function ClockActionModal({
-   open,
-   onOpenChange,
-   staffId,
-   staffName,
-   staffPhoto,
-   activeRecord,
+  // New props for lateness calculation
+  scheduledStartTime?: string;
+  shiftDate?: string;
+  graceMinutes?: number;
+}
+
+export function ClockActionModal({
+  open,
+  onOpenChange,
+  staffId,
+  staffName,
+  staffPhoto,
+  activeRecord,
   faceConfidence,
   overrideManagerId,
   isManagerOverride,
   onActionComplete,
- }: ClockActionModalProps) {
-   const { clockIn, startBreak, endBreak, clockOut } = useAttendance();
-   const [processingAction, setProcessingAction] = useState<string | null>(null);
- 
-   const handleAction = async (action: 'clock_in' | 'start_break' | 'end_break' | 'clock_out') => {
-     setProcessingAction(action);
- 
-     try {
-       switch (action) {
-         case 'clock_in':
-            await clockIn.mutateAsync({
-              staffId,
-              faceConfidence,
-              overrideBy: isManagerOverride ? overrideManagerId : undefined,
-              overridePinUsed: isManagerOverride,
-            });
-           break;
+  scheduledStartTime,
+  shiftDate,
+  graceMinutes,
+}: ClockActionModalProps) {
+  const { clockIn, startBreak, endBreak, clockOut } = useAttendance();
+  const [processingAction, setProcessingAction] = useState<string | null>(null);
+
+  const handleAction = async (action: 'clock_in' | 'start_break' | 'end_break' | 'clock_out') => {
+    setProcessingAction(action);
+
+    try {
+      switch (action) {
+        case 'clock_in':
+          await clockIn.mutateAsync({
+            staffId,
+            faceConfidence,
+            overrideBy: isManagerOverride ? overrideManagerId : undefined,
+            overridePinUsed: isManagerOverride,
+            scheduledStartTime,
+            shiftDate,
+            graceMinutes,
+          });
+          break;
          case 'start_break':
            if (activeRecord) await startBreak.mutateAsync(activeRecord.id);
            break;

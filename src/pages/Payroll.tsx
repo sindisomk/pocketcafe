@@ -9,7 +9,9 @@ import {
   Clock,
   Calendar,
   Calculator,
-  Timer
+  Timer,
+  Wallet,
+  Target
 } from 'lucide-react';
 import { Banknote, Receipt } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,13 +19,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
+import { Progress } from '@/components/ui/progress';
 import { useStaff } from '@/hooks/useStaff';
 import { useSchedule } from '@/hooks/useSchedule';
 import { usePayrollData } from '@/hooks/usePayrollData';
 import { useAllLeaveBalances } from '@/hooks/useLeaveBalance';
+import { useBudgetSettings } from '@/hooks/useBudgetSettings';
 import { generatePayrollSummary, checkRestPeriodViolations, exportPayrollCSV } from '@/lib/payroll';
 import { ComplianceWarningCard } from '@/components/payroll/ComplianceWarningCard';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 // Convert hours to days (8 hours = 1 day)
 const hoursTodays = (hours: number) => hours / 8;
@@ -44,6 +49,7 @@ export default function Payroll() {
     currentWeekEnd
   );
   const { data: leaveBalances, isLoading: leaveLoading } = useAllLeaveBalances();
+  const { settings: budgets } = useBudgetSettings();
 
   const isLoading = staffLoading || shiftsLoading || attendanceLoading || leaveLoading;
 
@@ -79,6 +85,35 @@ export default function Payroll() {
       netPay: payrollSummaries.reduce((sum, s) => sum + s.netPay, 0),
     };
   }, [payrollSummaries]);
+
+  // Calculate budget comparison (weekly budgets)
+  const budgetComparison = useMemo(() => {
+    const costsByDept: Record<string, number> = {
+      floor: 0,
+      kitchen: 0,
+      bar: 0,
+      management: 0,
+    };
+
+    staff.forEach((s) => {
+      const summary = generatePayrollSummary(s, attendanceRecords);
+      if (costsByDept[s.role] !== undefined) {
+        costsByDept[s.role] += summary.grossPay;
+      }
+    });
+
+    const totalActual = Object.values(costsByDept).reduce((sum, cost) => sum + cost, 0);
+    const totalBudget = budgets.kitchen + budgets.floor + budgets.bar + budgets.management;
+    const percentUsed = totalBudget > 0 ? (totalActual / totalBudget) * 100 : 0;
+
+    return {
+      totalActual,
+      totalBudget,
+      percentUsed: Math.min(100, percentUsed),
+      overBudget: totalActual > totalBudget,
+      overAmount: Math.max(0, totalActual - totalBudget),
+    };
+  }, [staff, attendanceRecords, budgets]);
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -161,7 +196,7 @@ export default function Payroll() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-2">
@@ -224,6 +259,33 @@ export default function Payroll() {
           <CardContent>
             <p className="text-3xl font-bold text-primary">£{totals.netPay.toFixed(2)}</p>
             <p className="text-sm text-muted-foreground">take-home pay</p>
+          </CardContent>
+        </Card>
+
+        <Card className={cn(budgetComparison.overBudget && "border-destructive/50")}>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2">
+              <Target className="h-4 w-4" />
+              Budget Status
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className={cn(
+              "text-2xl font-bold",
+              budgetComparison.overBudget && "text-destructive"
+            )}>
+              {budgetComparison.percentUsed.toFixed(0)}%
+            </p>
+            <Progress 
+              value={budgetComparison.percentUsed} 
+              className={cn(
+                "h-2",
+                budgetComparison.overBudget && "[&>div]:bg-destructive"
+              )}
+            />
+            <p className="text-xs text-muted-foreground">
+              £{totals.grossPay.toFixed(0)} / £{budgetComparison.totalBudget.toLocaleString()}
+            </p>
           </CardContent>
         </Card>
 

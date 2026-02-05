@@ -338,15 +338,18 @@ export default function Kiosk() {
        {selectedStaff && (
          <ClockActionModal
            open={!!selectedStaff}
-          onOpenChange={(open) => !open && handleModalClose()}
+           onOpenChange={(open) => !open && handleModalClose()}
            staffId={selectedStaff.id}
            staffName={selectedStaff.name}
            staffPhoto={selectedStaff.photo}
-            activeRecord={activeRecord}
-          faceConfidence={detectedConfidence ?? undefined}
-          overrideManagerId={managerOverrideId ?? undefined}
-          isManagerOverride={!!managerOverrideId}
-          onActionComplete={handleModalClose}
+           activeRecord={activeRecord}
+           faceConfidence={detectedConfidence ?? undefined}
+           overrideManagerId={managerOverrideId ?? undefined}
+           isManagerOverride={!!managerOverrideId}
+           onActionComplete={handleModalClose}
+           scheduledStartTime={shifts.find(s => s.staff_id === selectedStaff.id)?.start_time}
+           shiftDate={today}
+           graceMinutes={settings.latenessGraceMinutes}
          />
        )}
      </div>
