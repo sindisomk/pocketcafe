@@ -1,159 +1,165 @@
 
 
 ## Goal
-Fix all identified Kiosk issues and add an in-camera clock-in/out overlay button when a staff member is detected via facial recognition.
+Add a prominent "Tap to Scan" button for manual face recognition triggering and improve clarity of available clock actions based on current staff status.
 
 ---
 
-## Issues Identified
+## Current State Analysis
 
-| Issue | Current State | Required Fix |
-|-------|---------------|--------------|
-| **Manager Override Tracking** | PIN verification returns `manager_id` but it's never passed to attendance mutations | Store `manager_id` and pass to `clockIn`/`clockOut` with `override_by` and `override_pin_used: true` |
-| **Face Confidence Not Stored** | `CameraFeed` receives `confidence` from Face++ but doesn't pass it to `clockIn` | Pass `faceConfidence` through the flow and store in `attendance_records.face_match_confidence` |
-| **No In-Camera Action Buttons** | User must wait for modal after face detection | Add overlay buttons directly on camera when face is detected for quick clock-in/out |
-| **useAttendance.clockIn Missing Fields** | `clockIn` mutation doesn't accept `faceConfidence`, `overrideBy`, or `overridePinUsed` | Extend mutation to accept and persist all fields |
+### What Exists
+- Auto-scanning every 3 seconds when camera is active
+- Quick action overlay appears after face detection with buttons for Clock In, Break, End Break, Clock Out
+- Status message shows "Position your face in the frame" or "Scanning..."
 
----
-
-## Implementation Steps
-
-### 1. Update `useAttendance` Hook
-Extend the `clockIn` mutation to accept optional fields for tracking:
-
-```typescript
-// src/hooks/useAttendance.ts - Updated clockIn parameters
-clockIn.mutateAsync({ 
-  staffId: string,
-  faceConfidence?: number,      // NEW: Face++ match score
-  overrideBy?: string,          // NEW: Manager user_id from PIN verify
-  overridePinUsed?: boolean     // NEW: Was this a PIN override?
-})
-```
-
-**Database insert changes:**
-- Pass `face_match_confidence` when provided
-- Pass `override_by` and `override_pin_used` when manager override is used
+### Issues to Address
+1. **No Manual Trigger**: Staff must wait for the 3-second auto-scan interval
+2. **Action Clarity**: The overlay shows multiple buttons but doesn't clearly indicate the CURRENT status or PRIMARY action
+3. **No Visual Cue**: Users don't know when scanning will happen
 
 ---
 
-### 2. Update `ClockActionModal` Component
-Pass additional context from parent:
+## Implementation Plan
 
-```typescript
-// Props additions
-interface ClockActionModalProps {
-  // ...existing props
-  faceConfidence?: number;       // NEW
-  overrideManagerId?: string;    // NEW
-  isManagerOverride?: boolean;   // NEW
-}
-```
+### 1. Add "Tap to Scan" Button
+A large, prominent button in the center-bottom of the camera view that staff can tap to immediately trigger face scanning.
 
-These will be passed to the `clockIn` mutation.
+**Location**: Below the face frame, above the status message
+**Behavior**:
+- Tapping triggers `captureAndSearch()` immediately
+- Button shows loading state while scanning
+- Hidden when face is detected (replaced by action overlay)
 
----
+### 2. Improve Status Clarity
+Replace the simple status text with a more informative display showing:
+- Current action available (what will happen)
+- Staff's current status if detected
 
-### 3. Update Kiosk State Management
-Track override context in `Kiosk.tsx`:
-
-```typescript
-// New state for manager override tracking
-const [managerOverrideId, setManagerOverrideId] = useState<string | null>(null);
-const [detectedConfidence, setDetectedConfidence] = useState<number | null>(null);
-```
-
-**Flow changes:**
-1. `ManagerPinPad.onPinVerified` now returns `manager_id`
-2. Store `manager_id` in state when override mode is used
-3. Pass to `ClockActionModal` when opened
-4. Clear after successful action
+### 3. Redesign Action Overlay
+When face is detected, show a clearer overlay that:
+- Displays ONE prominent primary action button
+- Shows current status badge (e.g., "Currently: Clocked In")
+- Shows secondary actions in smaller format
 
 ---
 
-### 4. Update `ManagerPinPad` Component
-Change `onPinVerified` callback to include manager ID:
+## UI Changes to CameraFeed.tsx
 
-```typescript
-// Current signature
-onPinVerified: () => void
-
-// New signature
-onPinVerified: (managerId: string) => void
-```
-
-The component already receives `manager_id` from the edge function - just needs to pass it up.
-
----
-
-### 5. Add In-Camera Clock-In/Out Overlay
-When a face is detected and matched, show action buttons directly on the camera feed:
-
-**New UI Component:** Overlay inside `CameraFeed.tsx`
-
+### New "Tap to Scan" Button
 ```text
 +------------------------------------------+
 |                                          |
 |           [Camera Feed]                  |
 |                                          |
-|    +---------------------------+         |
-|    |  👤 Staff Name Detected   |         |
-|    |     Confidence: 95%       |         |
-|    |                           |         |
-|    |  [Clock In]  [Clock Out]  |         |
-|    |     [Start Break]         |         |
-|    +---------------------------+         |
+|        +------------------+              |
+|        |   Face Frame     |              |
+|        |                  |              |
+|        +------------------+              |
 |                                          |
+|         [ 👆 TAP TO SCAN ]               |  <-- NEW prominent button
+|                                          |
+|    "Position your face in the frame"    |
 +------------------------------------------+
 ```
 
-**Behavior:**
-- Appears when `scanningStatus === 'detected'`
-- Shows detected staff name and confidence
-- Buttons are contextual (Clock In if not clocked in, Break/Out if already clocked in)
-- Clicking a button triggers the action directly (no modal needed)
-- Auto-hides after 5 seconds of inactivity
+### Improved Detection Overlay
+```text
++------------------------------------------+
+|                                          |
+|           [Camera Feed]                  |
+|                                          |
+|    +-----------------------------+       |
+|    |  👤 John Smith              |       |
+|    |  Match: 95% confident       |       |
+|    |                             |       |
+|    |  [  Currently: Not Clocked In  ]    |  <-- Status badge
+|    |                             |       |
+|    |  +---------------------+    |       |
+|    |  |   🟢 CLOCK IN      |    |       |  <-- Primary action (large)
+|    |  +---------------------+    |       |
+|    |                             |       |
+|    +-----------------------------+       |
++------------------------------------------+
 
----
+When already clocked in:
++-----------------------------+
+|  👤 John Smith              |
+|  Match: 95% confident       |
+|                             |
+|  [  Currently: Working  ]   |  <-- Green status
+|                             |
+|  +---------------+  +---------------+
+|  | ☕ START BREAK|  | 🔴 CLOCK OUT  |
+|  +---------------+  +---------------+
++-----------------------------+
 
-### 6. Updated CameraFeed Props
-Need additional information to show contextual buttons:
-
-```typescript
-interface CameraFeedProps {
-  onFaceDetected: (staffId: string, confidence: number) => void;
-  isProcessing: boolean;
-  staffName?: string | null;
-  
-  // NEW props for in-camera actions
-  detectedStaffId?: string | null;
-  activeRecord?: AttendanceRecord | null;
-  onClockAction?: (action: 'clock_in' | 'start_break' | 'end_break' | 'clock_out', staffId: string, confidence: number) => void;
-}
+When on break:
++-----------------------------+
+|  👤 John Smith              |
+|  Match: 95% confident       |
+|                             |
+|  [ ☕ Currently: On Break ] |  <-- Yellow status
+|                             |
+|  +---------------------+    |
+|  |   ⏱️ END BREAK      |    |  <-- Primary action
+|  +---------------------+    |
+|  [ Clock Out ]              |  <-- Secondary (smaller)
++-----------------------------+
 ```
 
 ---
 
-### 7. Kiosk Flow Update
-Add direct clock action handler:
+## Technical Changes
 
+### CameraFeed.tsx Modifications
+
+1. **Add manual scan trigger prop and expose captureAndSearch**:
 ```typescript
-// Handle quick action from camera overlay
-const handleCameraClockAction = async (
-  action: 'clock_in' | 'start_break' | 'end_break' | 'clock_out',
-  staffId: string,
-  confidence: number
-) => {
-  switch (action) {
-    case 'clock_in':
-      await clockIn.mutateAsync({ staffId, faceConfidence: confidence });
-      break;
-    case 'start_break':
-      const record = getActiveRecord(staffId);
-      if (record) await startBreak.mutateAsync(record.id);
-      break;
-    // ... etc
-  }
+// Make captureAndSearch callable from button
+const handleManualScan = () => {
+  // Clear cooldowns for manual scan
+  searchCooldownRef.current = false;
+  lastSearchRef.current = 0;
+  captureAndSearch();
+};
+```
+
+2. **Add "Tap to Scan" button**:
+```typescript
+{/* Tap to Scan button - shown when idle */}
+{scanningStatus === 'idle' && cameraActive && !detectedStaffId && (
+  <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-auto">
+    <Button
+      size="lg"
+      className="text-lg px-8 py-6 shadow-lg"
+      onClick={handleManualScan}
+    >
+      <Scan className="h-6 w-6 mr-2" />
+      Tap to Scan
+    </Button>
+  </div>
+)}
+```
+
+3. **Add status badge component**:
+```typescript
+// Status badge showing current state
+const getStatusBadge = () => {
+  if (!activeRecord) return { label: 'Not Clocked In', color: 'bg-muted' };
+  if (activeRecord.status === 'on_break') return { label: 'On Break', color: 'bg-warning' };
+  if (activeRecord.status === 'clocked_in') return { label: 'Working', color: 'bg-success' };
+  return { label: 'Unknown', color: 'bg-muted' };
+};
+```
+
+4. **Redesign action overlay with primary/secondary actions**:
+```typescript
+// Determine primary action
+const getPrimaryAction = () => {
+  if (!activeRecord) return 'clock_in';
+  if (activeRecord.status === 'on_break') return 'end_break';
+  if (activeRecord.status === 'clocked_in') return 'start_break'; // or clock_out as secondary
+  return null;
 };
 ```
 
@@ -163,56 +169,46 @@ const handleCameraClockAction = async (
 
 | File | Changes |
 |------|---------|
-| `src/hooks/useAttendance.ts` | Extend `clockIn` mutation with `faceConfidence`, `overrideBy`, `overridePinUsed` params |
-| `src/components/kiosk/ManagerPinPad.tsx` | Update `onPinVerified` to return `managerId` |
-| `src/components/kiosk/ClockActionModal.tsx` | Add props for confidence and override tracking, pass to mutations |
-| `src/components/kiosk/CameraFeed.tsx` | Add in-camera action overlay when face detected |
-| `src/pages/Kiosk.tsx` | Track manager ID, confidence; wire up camera actions; pass data to modal |
+| `src/components/kiosk/CameraFeed.tsx` | Add Tap to Scan button, status badge, redesigned action overlay with clear primary/secondary actions |
+
+---
+
+## New Icon Import
+```typescript
+import { Camera, CameraOff, Loader2, LogIn, LogOut, Coffee, Clock, Scan } from 'lucide-react';
+```
 
 ---
 
 ## User Experience Flow
 
-### Face Recognition Clock-In (Quick Path)
+### Standard Flow (with Tap to Scan)
 1. Staff approaches kiosk
-2. Camera detects and recognizes face
-3. Overlay appears on camera: "Welcome, John! [Clock In] [More...]"
-4. Staff taps "Clock In"
-5. Success toast, overlay fades, ready for next person
+2. Sees prominent "Tap to Scan" button
+3. Taps button (or waits for auto-scan)
+4. Face recognized - overlay appears showing:
+   - Name and confidence
+   - Current status: "Not Clocked In"
+   - Large green "CLOCK IN" button
+5. Taps Clock In
+6. Success toast, returns to scan mode
 
-### Face Recognition with Full Modal (Alternative)
-1. Staff approaches kiosk
-2. Camera detects and recognizes face
-3. Staff waits 2 seconds without tapping overlay
-4. Full `ClockActionModal` opens with all options
-5. Staff selects action
+### Already Working - Taking Break
+1. Staff approaches, taps "Tap to Scan"
+2. Face recognized - overlay shows:
+   - Name and confidence
+   - Current status: "Working" (green badge)
+   - Two buttons: "Start Break" | "Clock Out"
+3. Taps "Start Break"
+4. Success toast
 
-### Manager Override Flow
-1. Manager taps "Manager Override"
-2. Enters PIN
-3. PIN verified → `manager_id` captured
-4. Staff selection modal opens
-5. Manager selects staff member
-6. Clock action recorded with `override_by` and `override_pin_used: true`
-
----
-
-## Database Fields Utilized
-
-| Field | When Populated |
-|-------|----------------|
-| `face_match_confidence` | Face++ detection confidence (0-100) |
-| `override_by` | Manager's `user_id` when PIN override used |
-| `override_pin_used` | `true` when clock action is via manager PIN |
-
----
-
-## Testing Checklist
-- [ ] Clock in via face recognition stores `face_match_confidence`
-- [ ] Clock in via manager override stores `override_by` and `override_pin_used`
-- [ ] In-camera overlay appears when face is detected
-- [ ] Overlay shows correct action buttons based on current status
-- [ ] Quick clock-in from overlay works without modal
-- [ ] Overlay auto-hides after timeout
-- [ ] TodayRoster updates in real-time after clock actions
+### Returning from Break
+1. Staff approaches, taps "Tap to Scan"
+2. Face recognized - overlay shows:
+   - Name and confidence
+   - Current status: "On Break" (yellow badge)
+   - Primary: "End Break" button
+   - Secondary: "Clock Out" link
+3. Taps "End Break"
+4. Success toast
 
