@@ -110,6 +110,30 @@ export type Database = {
           },
         ]
       }
+      face_search_rate_limits: {
+        Row: {
+          client_ip: string
+          created_at: string
+          id: string
+          request_count: number
+          window_start: string
+        }
+        Insert: {
+          client_ip: string
+          created_at?: string
+          id?: string
+          request_count?: number
+          window_start?: string
+        }
+        Update: {
+          client_ip?: string
+          created_at?: string
+          id?: string
+          request_count?: number
+          window_start?: string
+        }
+        Relationships: []
+      }
       leave_balances: {
         Row: {
           accrued_hours: number | null
@@ -563,6 +587,7 @@ export type Database = {
       }
     }
     Functions: {
+      cleanup_old_rate_limits: { Args: never; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
