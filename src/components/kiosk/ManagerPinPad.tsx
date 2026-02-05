@@ -14,7 +14,7 @@
  interface ManagerPinPadProps {
    open: boolean;
    onOpenChange: (open: boolean) => void;
-   onPinVerified: () => void;
+  onPinVerified: (managerId: string) => void;
   title?: string;
   description?: string;
  }
@@ -61,7 +61,7 @@ export function ManagerPinPad({
        const result = await verifyPin(pin);
        
        if (result.valid) {
-         onPinVerified();
+          onPinVerified(result.manager_id ?? '');
          setPin('');
          onOpenChange(false);
        } else {

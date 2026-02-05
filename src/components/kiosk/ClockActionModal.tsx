@@ -21,6 +21,10 @@ import { AttendanceRecord } from '@/types/attendance';
    staffName: string;
    staffPhoto: string | null;
   activeRecord: AttendanceRecord | null;
+  faceConfidence?: number;
+  overrideManagerId?: string;
+  isManagerOverride?: boolean;
+  onActionComplete?: () => void;
  }
  
  export function ClockActionModal({
@@ -30,6 +34,10 @@ import { AttendanceRecord } from '@/types/attendance';
    staffName,
    staffPhoto,
    activeRecord,
+  faceConfidence,
+  overrideManagerId,
+  isManagerOverride,
+  onActionComplete,
  }: ClockActionModalProps) {
    const { clockIn, startBreak, endBreak, clockOut } = useAttendance();
    const [processingAction, setProcessingAction] = useState<string | null>(null);
@@ -40,7 +48,12 @@ import { AttendanceRecord } from '@/types/attendance';
      try {
        switch (action) {
          case 'clock_in':
-           await clockIn.mutateAsync({ staffId });
+            await clockIn.mutateAsync({
+              staffId,
+              faceConfidence,
+              overrideBy: isManagerOverride ? overrideManagerId : undefined,
+              overridePinUsed: isManagerOverride,
+            });
            break;
          case 'start_break':
            if (activeRecord) await startBreak.mutateAsync(activeRecord.id);
@@ -54,7 +67,10 @@ import { AttendanceRecord } from '@/types/attendance';
        }
        
        // Close modal after successful action
-       setTimeout(() => onOpenChange(false), 1000);
+        setTimeout(() => {
+          onOpenChange(false);
+          onActionComplete?.();
+        }, 1000);
      } finally {
        setProcessingAction(null);
      }

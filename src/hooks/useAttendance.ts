@@ -4,6 +4,13 @@
  import { toast } from 'sonner';
  import { format } from 'date-fns';
  
+interface ClockInParams {
+  staffId: string;
+  faceConfidence?: number;
+  overrideBy?: string;
+  overridePinUsed?: boolean;
+}
+
  export function useAttendance(date?: Date) {
    const queryClient = useQueryClient();
    const targetDate = date || new Date();
@@ -36,13 +43,15 @@
    });
  
    const clockIn = useMutation({
-     mutationFn: async ({ staffId, faceConfidence }: { staffId: string; faceConfidence?: number }) => {
+    mutationFn: async ({ staffId, faceConfidence, overrideBy, overridePinUsed }: ClockInParams) => {
        const { data, error } = await supabase
          .from('attendance_records')
          .insert({
            staff_id: staffId,
            status: 'clocked_in',
            face_match_confidence: faceConfidence,
+          override_by: overrideBy,
+          override_pin_used: overridePinUsed ?? false,
          })
          .select()
          .single();
