@@ -1,57 +1,103 @@
 
+# Fix: Blank Page on Root Route (/)
 
-# Fix: Assign Admin Role to Your Account
+## Problem Identified
 
-## Problem
+The dashboard page shows a blank screen with the following console errors:
+- `Warning: Function components cannot be given refs. Attempts to access this ref will fail.`
+- `TypeError: Component is not a function`
 
-Your account (sindisomk@gmail.com) was created successfully in the authentication system, but there is no corresponding entry in the `user_roles` table. This is expected behavior - Supabase Auth creates users in `auth.users`, but your application's `user_roles` table requires a separate entry.
+After thorough investigation, I found two root causes:
 
-The `user_roles` table is currently empty, which means:
-- Your account has no admin or manager privileges
-- Some features may be restricted or inaccessible
-- The sign-in flow completes but you may see limited functionality
+1. **Skeleton Component Issue**: The current `forwardRef` implementation has a problematic pattern where the inner function shares the same name as the outer const, which can cause issues with Vite's Hot Module Replacement.
 
-## Solution
+2. **Duplicate React Instances**: Vite may be bundling multiple copies of React, causing components from different copies to fail when sharing context or refs.
 
-### Step 1: Assign Admin Role to Your Account
+## Solution Overview
 
-Run a database migration to insert your user as an admin:
+### Step 1: Fix the Skeleton Component
 
-```sql
-INSERT INTO public.user_roles (user_id, role)
-VALUES ('f30dc455-4d31-4e5c-b02d-0d8774d3f60c', 'admin');
+Rewrite `src/components/ui/skeleton.tsx` using a more reliable pattern:
+- Use an arrow function inside forwardRef (the standard shadcn/ui pattern)
+- Add `displayName` for better debugging and HMR stability
+- Import React properly with namespace import
+
+```typescript
+import * as React from "react";
+import { cn } from "@/lib/utils";
+
+const Skeleton = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => {
+  return (
+    <div
+      ref={ref}
+      className={cn("animate-pulse rounded-md bg-muted", className)}
+      {...props}
+    />
+  );
+});
+Skeleton.displayName = "Skeleton";
+
+export { Skeleton };
 ```
 
-This grants you full administrative access to PocketCafe.
+### Step 2: Add Vite Dedupe Configuration
 
-### Step 2: Fix the Sign-In Button Loading Issue
+Update `vite.config.ts` to prevent duplicate React instances:
 
-Update `src/pages/Login.tsx` to properly handle the auth state transition:
+```typescript
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react-swc";
+import path from "path";
+import { componentTagger } from "lovable-tagger";
 
-1. Add a `useEffect` that watches the `user` state from `useAuth()`
-2. When `user` becomes populated (meaning auth succeeded), navigate to `/`
-3. Remove the manual `navigate('/')` from `handleSignIn` since navigation will happen automatically via the effect
-4. Only call `setIsLoading(false)` on errors, not on success (keep showing loading until redirect)
-
-### Step 3: Consider Future User Onboarding
-
-For future users, you have two options:
-
-**Option A (Recommended for PocketCafe):** Manually assign roles via an admin interface. Since PocketCafe is a restaurant management system, you likely want to control who gets admin/manager access.
-
-**Option B:** Create a database trigger to auto-assign a default role (e.g., no role or a "staff" role) when users sign up. This is more appropriate for apps where all users start with the same permissions.
+export default defineConfig(({ mode }) => ({
+  server: {
+    host: "::",
+    port: 8080,
+    hmr: {
+      overlay: false,
+    },
+  },
+  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+    // Prevent duplicate React instances
+    dedupe: ["react", "react-dom", "react/jsx-runtime"],
+  },
+}));
+```
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| Database | Insert admin role for your account |
-| `src/pages/Login.tsx` | Add auth-based redirect via useEffect |
+| `src/components/ui/skeleton.tsx` | Rewrite using standard shadcn/ui forwardRef pattern with displayName |
+| `vite.config.ts` | Add `dedupe` configuration to resolve section |
+
+## Technical Details
+
+### Why this happens
+
+1. **forwardRef Naming**: When the inner function inside `forwardRef` has the same name as the exported const, React's component identity can get confused during hot reloading, causing "Component is not a function" errors.
+
+2. **Duplicate React**: When multiple copies of React exist in the bundle (can happen with certain dependency resolutions), components cannot share refs or context across boundaries, causing the "cannot be given refs" warning followed by a crash.
+
+### Why this fix works
+
+1. The standard shadcn/ui pattern (arrow function + displayName) is battle-tested and works reliably with Vite's HMR.
+
+2. The `dedupe` configuration ensures only one copy of React is used throughout the application, preventing context sharing issues.
 
 ## Expected Outcome
 
 After these changes:
-1. Your account will have admin privileges
-2. Sign-in will complete smoothly without the button getting stuck
-3. You'll have full access to the staff directory, scheduler, and all admin features
-
+- The dashboard will render correctly at `/`
+- No more "Function components cannot be given refs" warnings
+- No more "Component is not a function" crashes
+- The loading skeleton will display properly during auth state resolution
+- Navigation throughout the app will work reliably
