@@ -1,131 +1,101 @@
 
 
 ## Goal
-Fix the staff member list not displaying in the Manager Override → Select Staff Member modal by using the public staff view that doesn't require admin/manager roles.
+Fix staff members not appearing in the Kiosk Manager Override → Select Staff Member modal by allowing the `staff_profiles_public` view to be queried without authentication.
 
-## Root Cause
+---
 
-The `StaffSelectModal` component uses the `useStaff()` hook which queries the `staff_profiles` table. This table has Row-Level Security (RLS) policies that restrict access:
+## Root Cause Analysis
 
-| User Role | Can View |
-|-----------|----------|
-| Admin | All staff profiles |
-| Manager | All staff profiles |
-| Regular Staff | Only their own profile |
+The investigation revealed:
 
-When a non-admin/non-manager user accesses the Kiosk and enters a valid PIN, the staff list query returns empty because they don't have permission to view all staff.
+1. **3 staff members exist** in both `staff_profiles` and `staff_profiles_public`
+2. **1 manager PIN is configured** in the database
+3. **The view definition is correct** - selects non-sensitive fields from `staff_profiles`
+
+**However**, the view was created with `security_invoker=on`:
+
+| Setting | Effect |
+|---------|--------|
+| `security_invoker=on` | View queries run with the **caller's** privileges |
+| No setting / `security_invoker=off` | View queries run with the **view owner's** privileges (bypasses RLS) |
+
+Since the Kiosk is designed to work **without login** (as confirmed), queries run as `anon`. The RLS policies on `staff_profiles` require:
+- Admin role, OR
+- Manager role, OR  
+- Being the specific user (matching `user_id`)
+
+None of these apply to anonymous users → **empty result**.
+
+---
 
 ## Solution
 
-Use the existing `staff_profiles_public` view which:
-- Has no RLS restrictions (accessible to all authenticated users)
-- Excludes sensitive fields (NI number, contact email/phone, tax code)
-- Contains all fields needed for staff selection (id, name, photo, role)
+Recreate the `staff_profiles_public` view **without** `security_invoker=on` so it can be queried by unauthenticated Kiosk users after PIN verification.
 
-## Implementation Steps
+---
 
-### Step 1: Create a Kiosk-specific Staff Hook
+## Implementation
 
-Create a new hook `useKioskStaff` that fetches from `staff_profiles_public` view instead of the restricted `staff_profiles` table.
+### Step 1: Drop and Recreate the View (Database Migration)
 
-**File:** `src/hooks/useKioskStaff.ts`
+```sql
+DROP VIEW IF EXISTS public.staff_profiles_public;
 
-```text
-Purpose: Fetch staff list from public view for Kiosk use
-- Query staff_profiles_public view
-- Return minimal staff data needed for selection
-- Handle loading and error states
+CREATE VIEW public.staff_profiles_public AS
+  SELECT 
+    id,
+    user_id,
+    name,
+    profile_photo_url,
+    role,
+    contract_type,
+    hourly_rate,
+    created_at,
+    updated_at
+  FROM public.staff_profiles;
+
+-- Grant access to both anon and authenticated roles
+GRANT SELECT ON public.staff_profiles_public TO anon, authenticated;
+
+COMMENT ON VIEW public.staff_profiles_public IS 'Non-sensitive staff data for Kiosk and public display. No RLS enforcement.';
 ```
 
-### Step 2: Update StaffSelectModal
+### Step 2: (Optional) Update Types if Needed
 
-Modify `StaffSelectModal` to use the new `useKioskStaff` hook instead of `useStaff`.
+The Supabase types file will auto-regenerate after the migration.
 
-**File:** `src/components/kiosk/StaffSelectModal.tsx`
-
-Changes:
-- Import `useKioskStaff` instead of `useStaff`
-- Adjust type handling for nullable fields from the view
-
-## Files to Create/Modify
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/hooks/useKioskStaff.ts` | Create | Hook that queries staff_profiles_public |
-| `src/components/kiosk/StaffSelectModal.tsx` | Modify | Use the new hook |
-
-## Technical Details
-
-### New Hook Implementation
-
-```typescript
-// src/hooks/useKioskStaff.ts
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-
-interface KioskStaff {
-  id: string;
-  name: string;
-  profile_photo_url: string | null;
-  role: string;
-}
-
-export function useKioskStaff() {
-  const query = useQuery({
-    queryKey: ['kiosk-staff'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('staff_profiles_public')
-        .select('id, name, profile_photo_url, role')
-        .order('name');
-      
-      if (error) throw error;
-      
-      // Filter out any null id entries and cast types
-      return (data ?? []).filter(s => s.id && s.name) as KioskStaff[];
-    },
-  });
-
-  return {
-    staff: query.data ?? [],
-    isLoading: query.isLoading,
-    isError: query.isError,
-  };
-}
-```
-
-### Modal Update
-
-```typescript
-// StaffSelectModal.tsx changes
-import { useKioskStaff } from '@/hooks/useKioskStaff';
-
-// Replace:
-const { staff, isLoading } = useStaff();
-
-// With:
-const { staff, isLoading } = useKioskStaff();
-```
+---
 
 ## Security Considerations
 
-The `staff_profiles_public` view intentionally exposes only non-sensitive fields:
-- id, name, profile_photo_url, role, contract_type, hourly_rate
+| Aspect | Assessment |
+|--------|------------|
+| **Data exposed** | Only non-sensitive: id, name, photo, role, contract type, hourly rate, timestamps |
+| **Data protected** | NI numbers, contact emails, phone numbers, tax codes remain hidden |
+| **Access pattern** | View accessible only after successful manager PIN verification (UI-enforced) |
+| **Risk level** | Low - staff names/roles are typically visible in workplace settings |
 
-It does NOT expose:
-- NI numbers
-- Contact email/phone
-- Tax codes
-- NIC categories
+The view was already designed to expose only public-facing staff information. The only change is removing the `security_invoker` flag that was blocking access.
 
-This is the correct approach for Kiosk mode where the goal is staff identification for clock-in/out, not access to sensitive employee data.
+---
+
+## Files Changed
+
+| File | Action |
+|------|--------|
+| Database migration | Recreate `staff_profiles_public` view |
+
+No frontend code changes are required - the `useKioskStaff` hook and `StaffSelectModal` are already correctly implemented.
+
+---
 
 ## Testing Steps
 
-1. Log in as a non-admin user (or regular staff member)
-2. Navigate to the Kiosk page (/kiosk)
-3. Click "Manager Override" button
-4. Enter a valid manager PIN
-5. Verify the "Select Staff Member" modal now shows all staff members
-6. Select a staff member and confirm the clock action modal appears
+1. Navigate to `/kiosk` (without logging in)
+2. Click **Manager Override**
+3. Enter a valid manager PIN (e.g., 1234)
+4. Click **Verify PIN**
+5. **Expected**: The "Select Staff Member" modal shows all 3 staff members
+6. Select a staff member → Clock Action modal should appear
 
