@@ -220,37 +220,37 @@ const OVERTIME_MULTIPLIER = 1.5;
    return Math.round(totalHours * 100) / 100;
  }
  
- /**
-  * Generate payroll summary for a staff member
+/**
+ * Generate payroll summary for a staff member
  * Includes overtime calculation for hours over 40/week
-  */
- export function generatePayrollSummary(
-   staff: StaffProfile,
-   attendanceRecords: AttendanceRecord[]
- ): PayrollSummary {
-   const staffRecords = attendanceRecords.filter(
-     (r) => r.staff_id === staff.id && r.clock_out_time
-   );
- 
-   let totalHoursWorked = 0;
-   let paidBreakHours = 0;
- 
-   staffRecords.forEach((record) => {
-     totalHoursWorked += calculateHoursWorked(record);
-     
-     // Count break hours that were taken
-     if (record.break_start_time && record.break_end_time) {
-       const breakMins = differenceInMinutes(
-         parseISO(record.break_end_time),
-         parseISO(record.break_start_time)
-       );
-       paidBreakHours += breakMins / 60;
-     } else {
-       // If no break logged, assume 30-min paid break was included
-       paidBreakHours += PAID_BREAK_HOURS;
-     }
-   });
- 
+ */
+export function generatePayrollSummary(
+  staff: StaffProfile,
+  attendanceRecords: AttendanceRecord[]
+): PayrollSummary {
+  const staffRecords = attendanceRecords.filter(
+    (r) => r.staff_id === staff.id && r.clock_out_time
+  );
+
+  let totalHoursWorked = 0;
+  let paidBreakHours = 0;
+
+  staffRecords.forEach((record) => {
+    totalHoursWorked += calculateHoursWorked(record);
+    
+    // Count break hours that were taken
+    if (record.break_start_time && record.break_end_time) {
+      const breakMins = differenceInMinutes(
+        parseISO(record.break_end_time),
+        parseISO(record.break_start_time)
+      );
+      paidBreakHours += breakMins / 60;
+    } else {
+      // If no break logged, assume 30-min paid break was included
+      paidBreakHours += PAID_BREAK_HOURS;
+    }
+  });
+
   // Calculate overtime (hours over 40 in the week)
   const regularHoursWorked = Math.min(totalHoursWorked, WEEKLY_OVERTIME_THRESHOLD);
   const overtimeHours = Math.max(0, totalHoursWorked - WEEKLY_OVERTIME_THRESHOLD);
@@ -259,31 +259,39 @@ const OVERTIME_MULTIPLIER = 1.5;
   const regularPay = regularHoursWorked * staff.hourly_rate;
   const overtimePay = overtimeHours * staff.hourly_rate * OVERTIME_MULTIPLIER;
   const grossPay = regularPay + overtimePay;
-   
-   // Holiday accrual only applies to zero-hour contracts
-   const holidayAccrual = staff.contract_type === 'zero_rate' 
-     ? grossPay * HOLIDAY_ACCRUAL_RATE 
-     : 0;
- 
-   return {
-     staffId: staff.id,
-     staffName: staff.name,
-     totalHoursWorked: Math.round(totalHoursWorked * 100) / 100,
-     paidBreakHours: Math.round(paidBreakHours * 100) / 100,
+  
+  // Holiday accrual only applies to zero-hour contracts
+  const holidayAccrual = staff.contract_type === 'zero_rate' 
+    ? grossPay * HOLIDAY_ACCRUAL_RATE 
+    : 0;
+
+  // Calculate lateness stats
+  const lateRecords = staffRecords.filter(r => r.is_late);
+  const lateCount = lateRecords.length;
+  const totalLateMinutes = lateRecords.reduce((sum, r) => sum + (r.late_minutes ?? 0), 0);
+
+  return {
+    staffId: staff.id,
+    staffName: staff.name,
+    totalHoursWorked: Math.round(totalHoursWorked * 100) / 100,
+    paidBreakHours: Math.round(paidBreakHours * 100) / 100,
     regularHours: Math.round(regularHoursWorked * 100) / 100,
     overtimeHours: Math.round(overtimeHours * 100) / 100,
-     hourlyRate: staff.hourly_rate,
-     grossPay: Math.round(grossPay * 100) / 100,
+    hourlyRate: staff.hourly_rate,
+    grossPay: Math.round(grossPay * 100) / 100,
     overtimePay: Math.round(overtimePay * 100) / 100,
-     holidayAccrual: Math.round(holidayAccrual * 100) / 100,
+    holidayAccrual: Math.round(holidayAccrual * 100) / 100,
     // Tax & NIC calculations
     taxCode: staff.tax_code || '1257L',
     nicCategory: staff.nic_category || 'A',
     incomeTax: Math.round(calculatePAYE(grossPay, staff.tax_code || '1257L') * 100) / 100,
     employeeNIC: Math.round(calculateEmployeeNIC(grossPay, staff.nic_category || 'A') * 100) / 100,
     netPay: Math.round((grossPay - calculatePAYE(grossPay, staff.tax_code || '1257L') - calculateEmployeeNIC(grossPay, staff.nic_category || 'A')) * 100) / 100,
-   };
- }
+    // Lateness tracking
+    lateCount,
+    totalLateMinutes,
+  };
+}
  
  /**
   * Check for UK Working Time Regulations violations
@@ -342,59 +350,64 @@ const OVERTIME_MULTIPLIER = 1.5;
    return warnings;
  }
  
- /**
-  * Export payroll data to CSV format
-  */
- export function exportPayrollCSV(summaries: PayrollSummary[], periodStart: string, periodEnd: string): string {
-   const headers = [
-     'Staff Name',
-     'Total Hours Worked',
-     'Paid Break Hours',
-     'Regular Hours',
+/**
+ * Export payroll data to CSV format
+ */
+export function exportPayrollCSV(summaries: PayrollSummary[], periodStart: string, periodEnd: string): string {
+  const headers = [
+    'Staff Name',
+    'Total Hours Worked',
+    'Paid Break Hours',
+    'Regular Hours',
     'Overtime Hours',
-     'Hourly Rate (£)',
+    'Hourly Rate (£)',
     'Overtime Pay (£)',
-     'Gross Pay (£)',
-     'Holiday Accrual (£)',
+    'Gross Pay (£)',
+    'Holiday Accrual (£)',
     'Tax Code',
     'PAYE Tax (£)',
     'NIC Category',
     'Employee NIC (£)',
     'Net Pay (£)',
-   ];
- 
-   const rows = summaries.map((s) => [
-     s.staffName,
-     s.totalHoursWorked.toFixed(2),
-     s.paidBreakHours.toFixed(2),
-     s.regularHours.toFixed(2),
+    'Late Arrivals',
+    'Total Late Minutes',
+  ];
+
+  const rows = summaries.map((s) => [
+    s.staffName,
+    s.totalHoursWorked.toFixed(2),
+    s.paidBreakHours.toFixed(2),
+    s.regularHours.toFixed(2),
     s.overtimeHours.toFixed(2),
-     s.hourlyRate.toFixed(2),
+    s.hourlyRate.toFixed(2),
     s.overtimePay.toFixed(2),
-     s.grossPay.toFixed(2),
-     s.holidayAccrual.toFixed(2),
+    s.grossPay.toFixed(2),
+    s.holidayAccrual.toFixed(2),
     s.taxCode,
     s.incomeTax.toFixed(2),
     s.nicCategory,
     s.employeeNIC.toFixed(2),
     s.netPay.toFixed(2),
-   ]);
- 
-   const csvContent = [
-     `PocketCafe Payroll Report`,
-     `Period: ${periodStart} to ${periodEnd}`,
-     `Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`,
-     '',
-     headers.join(','),
-     ...rows.map((row) => row.join(',')),
-     '',
+    s.lateCount.toString(),
+    s.totalLateMinutes.toString(),
+  ]);
+
+  const csvContent = [
+    `PocketCafe Payroll Report`,
+    `Period: ${periodStart} to ${periodEnd}`,
+    `Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`,
+    '',
+    headers.join(','),
+    ...rows.map((row) => row.join(',')),
+    '',
     `Total Overtime Pay,,,,,,£${summaries.reduce((sum, s) => sum + s.overtimePay, 0).toFixed(2)},`,
-   `Total Gross Pay,,,,,,,£${summaries.reduce((sum, s) => sum + s.grossPay, 0).toFixed(2)},,,,,`,
-   `Total Holiday Accrual,,,,,,,,£${summaries.reduce((sum, s) => sum + s.holidayAccrual, 0).toFixed(2)},,,,`,
-   `Total PAYE Tax,,,,,,,,,,£${summaries.reduce((sum, s) => sum + s.incomeTax, 0).toFixed(2)},,,`,
-   `Total Employee NIC,,,,,,,,,,,,£${summaries.reduce((sum, s) => sum + s.employeeNIC, 0).toFixed(2)},`,
-   `Total Net Pay,,,,,,,,,,,,,£${summaries.reduce((sum, s) => sum + s.netPay, 0).toFixed(2)}`,
-   ];
- 
-   return csvContent.join('\n');
- }
+    `Total Gross Pay,,,,,,,£${summaries.reduce((sum, s) => sum + s.grossPay, 0).toFixed(2)},,,,,`,
+    `Total Holiday Accrual,,,,,,,,£${summaries.reduce((sum, s) => sum + s.holidayAccrual, 0).toFixed(2)},,,,`,
+    `Total PAYE Tax,,,,,,,,,,£${summaries.reduce((sum, s) => sum + s.incomeTax, 0).toFixed(2)},,,`,
+    `Total Employee NIC,,,,,,,,,,,,£${summaries.reduce((sum, s) => sum + s.employeeNIC, 0).toFixed(2)},`,
+    `Total Net Pay,,,,,,,,,,,,,£${summaries.reduce((sum, s) => sum + s.netPay, 0).toFixed(2)}`,
+    `Total Late Arrivals,,,,,,,,,,,,,,,${summaries.reduce((sum, s) => sum + s.lateCount, 0)}`,
+  ];
+
+  return csvContent.join('\n');
+}

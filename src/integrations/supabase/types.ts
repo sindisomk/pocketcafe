@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          created_at: string | null
+          id: string
+          setting_key: string
+          setting_value: Json
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          setting_key: string
+          setting_value: Json
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          setting_key?: string
+          setting_value?: Json
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       attendance_records: {
         Row: {
           break_end_time: string | null
@@ -23,9 +47,12 @@ export type Database = {
           created_at: string
           face_match_confidence: number | null
           id: string
+          is_late: boolean | null
+          late_minutes: number | null
           notes: string | null
           override_by: string | null
           override_pin_used: boolean | null
+          scheduled_start_time: string | null
           staff_id: string
           status: Database["public"]["Enums"]["attendance_status"]
           updated_at: string
@@ -38,9 +65,12 @@ export type Database = {
           created_at?: string
           face_match_confidence?: number | null
           id?: string
+          is_late?: boolean | null
+          late_minutes?: number | null
           notes?: string | null
           override_by?: string | null
           override_pin_used?: boolean | null
+          scheduled_start_time?: string | null
           staff_id: string
           status?: Database["public"]["Enums"]["attendance_status"]
           updated_at?: string
@@ -53,9 +83,12 @@ export type Database = {
           created_at?: string
           face_match_confidence?: number | null
           id?: string
+          is_late?: boolean | null
+          late_minutes?: number | null
           notes?: string | null
           override_by?: string | null
           override_pin_used?: boolean | null
+          scheduled_start_time?: string | null
           staff_id?: string
           status?: Database["public"]["Enums"]["attendance_status"]
           updated_at?: string
@@ -157,6 +190,70 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      no_show_records: {
+        Row: {
+          created_at: string | null
+          detected_at: string | null
+          id: string
+          resolution_notes: string | null
+          resolved: boolean | null
+          resolved_at: string | null
+          resolved_by: string | null
+          scheduled_start_time: string
+          shift_date: string
+          shift_id: string
+          staff_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          detected_at?: string | null
+          id?: string
+          resolution_notes?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          scheduled_start_time: string
+          shift_date: string
+          shift_id: string
+          staff_id: string
+        }
+        Update: {
+          created_at?: string | null
+          detected_at?: string | null
+          id?: string
+          resolution_notes?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          scheduled_start_time?: string
+          shift_date?: string
+          shift_id?: string
+          staff_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "no_show_records_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "no_show_records_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "no_show_records_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       shifts: {
         Row: {
