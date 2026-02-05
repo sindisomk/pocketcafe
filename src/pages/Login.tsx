@@ -33,8 +33,13 @@ export default function Login() {
       if (error) {
         toast.error(error.message);
         setIsLoading(false);
+      } else {
+        // Success: give a reasonable time for redirect, then reset as safety
+        // The useEffect should redirect before this fires
+        setTimeout(() => {
+          setIsLoading(false);
+        }, 3000);
       }
-      // Don't navigate or reset loading on success - useEffect handles redirect
     } catch {
       toast.error('An unexpected error occurred');
       setIsLoading(false);
