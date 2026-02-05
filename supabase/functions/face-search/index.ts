@@ -10,9 +10,9 @@ const FACEPP_API_URL = "https://api-us.faceplusplus.com/facepp/v3";
 const FACESET_OUTER_ID = "pocketcafe-staff";
 const CONFIDENCE_THRESHOLD = 80; // Minimum confidence for a match
 
-// Rate limiting configuration
+// Rate limiting configuration - tightened for security
 const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 10; // Max 10 requests per minute per IP
+const RATE_LIMIT_MAX_REQUESTS = 5; // Max 5 requests per minute per IP (reduced from 10)
 
 // Image validation limits
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB max
