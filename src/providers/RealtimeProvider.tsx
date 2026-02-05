@@ -100,6 +100,42 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
           queryClient.invalidateQueries({ queryKey: queryKeys.staff });
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'no_show_records',
+        },
+        (payload) => {
+          console.log('[Realtime] no_show_records change:', payload.eventType);
+          setLastSync(new Date());
+          queryClient.invalidateQueries({ 
+            predicate: (query) => {
+              const key = query.queryKey;
+              return Array.isArray(key) && key[0] === 'no-shows';
+            }
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'app_settings',
+        },
+        (payload) => {
+          console.log('[Realtime] app_settings change:', payload.eventType);
+          setLastSync(new Date());
+          queryClient.invalidateQueries({ 
+            predicate: (query) => {
+              const key = query.queryKey;
+              return Array.isArray(key) && key[0] === 'settings';
+            }
+          });
+        }
+      )
       .subscribe((status) => {
         console.log('[Realtime] Connection status:', status);
         setIsConnected(status === 'SUBSCRIBED');

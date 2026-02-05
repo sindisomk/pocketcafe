@@ -1,15 +1,19 @@
- import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
- import { supabase } from '@/integrations/supabase/client';
- import { AttendanceRecord, AttendanceRecordWithStaff } from '@/types/attendance';
- import { toast } from 'sonner';
- import { format } from 'date-fns';
- import { queryKeys } from '@/lib/queryKeys';
- 
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { AttendanceRecord, AttendanceRecordWithStaff } from '@/types/attendance';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { queryKeys } from '@/lib/queryKeys';
+import { calculateLateness } from '@/lib/attendance';
+
 interface ClockInParams {
   staffId: string;
   faceConfidence?: number;
   overrideBy?: string;
   overridePinUsed?: boolean;
+  scheduledStartTime?: string;
+  shiftDate?: string;
+  graceMinutes?: number;
 }
 
  export function useAttendance(date?: Date) {
@@ -43,33 +47,75 @@ interface ClockInParams {
      },
    });
  
-   const clockIn = useMutation({
-    mutationFn: async ({ staffId, faceConfidence, overrideBy, overridePinUsed }: ClockInParams) => {
-       const { data, error } = await supabase
-         .from('attendance_records')
-         .insert({
-           staff_id: staffId,
-           status: 'clocked_in',
-           face_match_confidence: faceConfidence,
+  const clockIn = useMutation({
+    mutationFn: async ({ 
+      staffId, 
+      faceConfidence, 
+      overrideBy, 
+      overridePinUsed, 
+      scheduledStartTime,
+      shiftDate,
+      graceMinutes = 5
+    }: ClockInParams) => {
+      const clockInTime = new Date();
+      const effectiveShiftDate = shiftDate || dateStr;
+      
+      // Calculate lateness if we have scheduled start time
+      let isLate = false;
+      let lateMinutes = 0;
+      
+      if (scheduledStartTime) {
+        const lateness = calculateLateness(clockInTime, scheduledStartTime, effectiveShiftDate, graceMinutes);
+        isLate = lateness.isLate;
+        lateMinutes = lateness.lateMinutes;
+      }
+
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .insert({
+          staff_id: staffId,
+          status: 'clocked_in',
+          face_match_confidence: faceConfidence,
           override_by: overrideBy,
           override_pin_used: overridePinUsed ?? false,
-         })
-         .select()
-         .single();
- 
-       if (error) throw error;
-       return data;
-     },
-     onSuccess: () => {
-       queryClient.invalidateQueries({ queryKey: queryKeys.attendance(dateStr) });
-       // Also invalidate shifts-today for TodayRoster
-       queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(dateStr) });
-       toast.success('Successfully clocked in!');
-     },
-     onError: (error) => {
-       toast.error(`Failed to clock in: ${error.message}`);
-     },
-   });
+          scheduled_start_time: scheduledStartTime || null,
+          is_late: isLate,
+          late_minutes: lateMinutes,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.attendance(dateStr) });
+      // Also invalidate shifts-today for TodayRoster
+      queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(dateStr) });
+      
+      // Show appropriate toast based on lateness
+      if (variables.scheduledStartTime) {
+        const clockInTime = new Date();
+        const lateness = calculateLateness(
+          clockInTime, 
+          variables.scheduledStartTime, 
+          variables.shiftDate || dateStr, 
+          variables.graceMinutes || 5
+        );
+        
+        if (lateness.isLate) {
+          toast.warning(`Clocked in ${lateness.lateMinutes} minutes late`);
+        } else {
+          toast.success('Successfully clocked in!');
+        }
+      } else {
+        toast.success('Successfully clocked in!');
+      }
+    },
+    onError: (error) => {
+      toast.error(`Failed to clock in: ${error.message}`);
+    },
+  });
  
    const startBreak = useMutation({
      mutationFn: async (recordId: string) => {

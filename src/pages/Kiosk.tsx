@@ -1,36 +1,73 @@
- import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Coffee, KeyRound, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
- import { Button } from '@/components/ui/button';
- import { CameraFeed } from '@/components/kiosk/CameraFeed';
- import { TodayRoster } from '@/components/kiosk/TodayRoster';
- import { ClockActionModal } from '@/components/kiosk/ClockActionModal';
- import { ManagerPinPad } from '@/components/kiosk/ManagerPinPad';
- import { StaffSelectModal } from '@/components/kiosk/StaffSelectModal';
- import { useAttendance } from '@/hooks/useAttendance';
+import { Button } from '@/components/ui/button';
+import { CameraFeed } from '@/components/kiosk/CameraFeed';
+import { TodayRoster } from '@/components/kiosk/TodayRoster';
+import { ClockActionModal } from '@/components/kiosk/ClockActionModal';
+import { ManagerPinPad } from '@/components/kiosk/ManagerPinPad';
+import { StaffSelectModal } from '@/components/kiosk/StaffSelectModal';
+import { useAttendance } from '@/hooks/useAttendance';
+import { useNoShowDetection } from '@/hooks/useNoShowDetection';
+import { useWorkHoursSettings } from '@/hooks/useAppSettings';
 import { AttendanceRecord } from '@/types/attendance';
- import { format } from 'date-fns';
- import { supabase } from '@/integrations/supabase/client';
+import { format } from 'date-fns';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+import { ShiftWithStaff } from '@/types/schedule';
  
- export default function Kiosk() {
+export default function Kiosk() {
   const navigate = useNavigate();
-   const [currentTime, setCurrentTime] = useState(new Date());
-   const [showPinPad, setShowPinPad] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [showPinPad, setShowPinPad] = useState(false);
   const [pinPadMode, setPinPadMode] = useState<'override' | 'exit'>('override');
-   const [showStaffSelect, setShowStaffSelect] = useState(false);
-   const [selectedStaff, setSelectedStaff] = useState<{
-     id: string;
-     name: string;
-     photo: string | null;
-   } | null>(null);
-   const [isProcessing, setIsProcessing] = useState(false);
-   const [detectedStaffName, setDetectedStaffName] = useState<string | null>(null);
+  const [showStaffSelect, setShowStaffSelect] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState<{
+    id: string;
+    name: string;
+    photo: string | null;
+  } | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [detectedStaffName, setDetectedStaffName] = useState<string | null>(null);
   const [detectedStaffId, setDetectedStaffId] = useState<string | null>(null);
   const [detectedConfidence, setDetectedConfidence] = useState<number | null>(null);
   const [managerOverrideId, setManagerOverrideId] = useState<string | null>(null);
- 
+
   const { getActiveRecord, attendance, clockIn, startBreak, endBreak, clockOut, refetch } = useAttendance();
+  const { settings } = useWorkHoursSettings();
+  
+  // Enable no-show detection in the background
+  useNoShowDetection({ 
+    enabled: true, 
+    thresholdMinutes: settings.noShowThresholdMinutes 
+  });
+
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  // Fetch today's shifts for lateness calculation
+  const { data: shifts = [] } = useQuery({
+    queryKey: queryKeys.shiftsToday(today),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('shifts')
+        .select(`
+          *,
+          staff_profiles (
+            id,
+            name,
+            hourly_rate,
+            profile_photo_url,
+            role
+          )
+        `)
+        .eq('shift_date', today);
+
+      if (error) throw error;
+      return data as ShiftWithStaff[];
+    },
+  });
  
    // Update time every second
    useEffect(() => {
@@ -108,9 +145,15 @@ import { toast } from 'sonner';
     try {
       switch (action) {
         case 'clock_in':
+          // Find the staff's shift for today to get scheduled start time
+          const todayShift = shifts.find(s => s.staff_id === staffId);
+          
           await clockIn.mutateAsync({
             staffId,
             faceConfidence: confidence,
+            scheduledStartTime: todayShift?.start_time,
+            shiftDate: today,
+            graceMinutes: settings.latenessGraceMinutes,
           });
           break;
         case 'start_break':
