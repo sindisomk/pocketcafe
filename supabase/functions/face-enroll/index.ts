@@ -24,6 +24,7 @@
      const FACEPP_API_SECRET = Deno.env.get("FACEPP_API_SECRET");
      const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
      const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
  
      if (!FACEPP_API_KEY) {
        throw new Error("FACEPP_API_KEY is not configured");
@@ -34,6 +35,31 @@
      if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
        throw new Error("Supabase configuration is missing");
      }
+ 
+     // Validate JWT - required for Lovable Cloud (ES256 signing)
+     const authHeader = req.headers.get("Authorization");
+     if (!authHeader?.startsWith("Bearer ")) {
+       return new Response(
+         JSON.stringify({ success: false, error: "Missing authorization header" }),
+         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+       );
+     }
+ 
+     const token = authHeader.replace("Bearer ", "");
+     const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY!, {
+       global: { headers: { Authorization: authHeader } },
+     });
+ 
+     const { data: claimsData, error: claimsError } = await authClient.auth.getUser(token);
+     if (claimsError || !claimsData?.user) {
+       console.error("[face-enroll] JWT validation failed:", claimsError);
+       return new Response(
+         JSON.stringify({ success: false, error: "Invalid authentication token" }),
+         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+       );
+     }
+ 
+     console.log(`[face-enroll] Authenticated user: ${claimsData.user.id}`);
  
      const { staffId, imageBase64 }: EnrollRequest = await req.json();
  
