@@ -7,7 +7,7 @@ import {
   ChevronRight, 
   AlertTriangle,
   Clock,
-  Coffee,
+  Calendar,
   Calculator,
   Timer
 } from 'lucide-react';
@@ -20,9 +20,13 @@ import { Separator } from '@/components/ui/separator';
 import { useStaff } from '@/hooks/useStaff';
 import { useSchedule } from '@/hooks/useSchedule';
 import { usePayrollData } from '@/hooks/usePayrollData';
+import { useAllLeaveBalances } from '@/hooks/useLeaveBalance';
 import { generatePayrollSummary, checkRestPeriodViolations, exportPayrollCSV } from '@/lib/payroll';
 import { ComplianceWarningCard } from '@/components/payroll/ComplianceWarningCard';
 import { Skeleton } from '@/components/ui/skeleton';
+
+// Convert hours to days (8 hours = 1 day)
+const hoursTodays = (hours: number) => hours / 8;
 
 export default function Payroll() {
   const [weekOffset, setWeekOffset] = useState(0);
@@ -39,8 +43,18 @@ export default function Payroll() {
     currentWeekStart,
     currentWeekEnd
   );
+  const { data: leaveBalances, isLoading: leaveLoading } = useAllLeaveBalances();
 
-  const isLoading = staffLoading || shiftsLoading || attendanceLoading;
+  const isLoading = staffLoading || shiftsLoading || attendanceLoading || leaveLoading;
+
+  // Create a map of staff ID to leave balance for quick lookup
+  const leaveBalanceMap = useMemo(() => {
+    const map = new Map<string, number>();
+    leaveBalances?.forEach((balance) => {
+      map.set(balance.staff_id, balance.accrued_hours ?? 0);
+    });
+    return map;
+  }, [leaveBalances]);
 
   // Generate payroll summaries for all staff
   const payrollSummaries = useMemo(() => {
@@ -216,13 +230,15 @@ export default function Payroll() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-2">
-              <Coffee className="h-4 w-4" />
-              Holiday Accrual
+              <Calendar className="h-4 w-4" />
+              Total Accrued Leave
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">£{totals.holidayAccrual.toFixed(2)}</p>
-            <p className="text-sm text-muted-foreground">12.07% for zero-hour</p>
+            <p className="text-3xl font-bold">
+              {hoursTodays(leaveBalances?.reduce((sum, b) => sum + (b.accrued_hours ?? 0), 0) ?? 0).toFixed(1)}d
+            </p>
+            <p className="text-sm text-muted-foreground">days accrued</p>
           </CardContent>
         </Card>
       </div>
@@ -257,7 +273,7 @@ export default function Payroll() {
                   <TableHead className="text-right">PAYE Tax</TableHead>
                   <TableHead className="text-right">Employee NIC</TableHead>
                   <TableHead className="text-right">Net Pay</TableHead>
-                  <TableHead className="text-right">Holiday Accrual</TableHead>
+                  <TableHead className="text-right">Accrued Leave</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -301,11 +317,11 @@ export default function Payroll() {
                           £{summary.netPay.toFixed(2)}
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {summary.holidayAccrual > 0 ? (
-                            `£${summary.holidayAccrual.toFixed(2)}`
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
+                          {(() => {
+                            const accruedHours = leaveBalanceMap.get(summary.staffId) ?? 0;
+                            const days = hoursTodays(accruedHours);
+                            return days > 0 ? `${days.toFixed(1)}d` : <span className="text-muted-foreground">—</span>;
+                          })()}
                         </TableCell>
                       </TableRow>
                     );
@@ -334,7 +350,7 @@ export default function Payroll() {
                     £{totals.netPay.toFixed(2)}
                   </TableCell>
                   <TableCell className="text-right font-mono">
-                    £{totals.holidayAccrual.toFixed(2)}
+                    {hoursTodays(leaveBalances?.reduce((sum, b) => sum + (b.accrued_hours ?? 0), 0) ?? 0).toFixed(1)}d
                   </TableCell>
                 </TableRow>
               </TableBody>
