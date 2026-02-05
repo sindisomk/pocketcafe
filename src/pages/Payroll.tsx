@@ -251,10 +251,10 @@ export default function Payroll() {
                 <TableRow>
                   <TableHead>Staff Member</TableHead>
                   <TableHead className="text-right">Total Hours</TableHead>
+                  <TableHead className="text-right">Overtime</TableHead>
                   <TableHead className="text-right">Gross Pay</TableHead>
                   <TableHead className="text-right">Tax Code</TableHead>
                   <TableHead className="text-right">PAYE Tax</TableHead>
-                  <TableHead className="text-right">NIC Cat</TableHead>
                   <TableHead className="text-right">Employee NIC</TableHead>
                   <TableHead className="text-right">Net Pay</TableHead>
                   <TableHead className="text-right">Holiday Accrual</TableHead>
@@ -280,6 +280,9 @@ export default function Payroll() {
                         <TableCell className="text-right font-mono">
                           {summary.totalHoursWorked.toFixed(2)}
                         </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {summary.overtimeHours > 0 ? summary.overtimeHours.toFixed(2) : '—'}
+                        </TableCell>
                         <TableCell className="text-right font-mono font-medium">
                           £{summary.grossPay.toFixed(2)}
                         </TableCell>
@@ -290,11 +293,6 @@ export default function Payroll() {
                         </TableCell>
                         <TableCell className="text-right font-mono text-destructive">
                           {summary.incomeTax > 0 ? `-£${summary.incomeTax.toFixed(2)}` : '—'}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant="outline" className="font-mono text-xs">
-                            {summary.nicCategory}
-                          </Badge>
                         </TableCell>
                         <TableCell className="text-right font-mono text-destructive">
                           {summary.employeeNIC > 0 ? `-£${summary.employeeNIC.toFixed(2)}` : '—'}
@@ -320,13 +318,15 @@ export default function Payroll() {
                     {totals.hours.toFixed(2)}
                   </TableCell>
                   <TableCell className="text-right font-mono">
+                    {totals.overtimeHours > 0 ? totals.overtimeHours.toFixed(2) : '—'}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
                     £{totals.grossPay.toFixed(2)}
                   </TableCell>
                   <TableCell />
                   <TableCell className="text-right font-mono text-destructive">
                     -£{totals.incomeTax.toFixed(2)}
                   </TableCell>
-                  <TableCell />
                   <TableCell className="text-right font-mono text-destructive">
                     -£{totals.employeeNIC.toFixed(2)}
                   </TableCell>
