@@ -139,6 +139,13 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
    // Reset form when dialog opens/closes or staff changes
    useEffect(() => {
      if (open) {
+       // Radix Dialog sets pointer-events: none on body which blocks
+       // external overlays (like DuckDuckGo Email Protection) from working.
+       // This workaround clears that style after Radix applies it.
+       const pointerEventsTimer = setTimeout(() => {
+         document.body.style.pointerEvents = '';
+       }, 0);
+ 
        if (staff) {
          form.reset({
            name: staff.name,
@@ -168,6 +175,7 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
             nic_category: 'A',
          });
        }
+       return () => clearTimeout(pointerEventsTimer);
      }
    }, [open, staff, form]);
  
