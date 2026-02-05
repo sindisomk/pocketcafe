@@ -8,31 +8,29 @@ import { useAuth } from '@/hooks/useAuth';
 import { useOutletSettings } from '@/hooks/useOutletSettings';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
-import { Store, CalendarDays } from 'lucide-react';
+import { CalendarDays } from 'lucide-react';
 import { format } from 'date-fns';
-
 export function ProtectedLayout() {
-  const { user, loading } = useAuth();
-  const { settings: outletSettings } = useOutletSettings();
-
+  const {
+    user,
+    loading
+  } = useAuth();
+  const {
+    settings: outletSettings
+  } = useOutletSettings();
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+    return <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="space-y-4 w-64">
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-4 w-3/4" />
           <Skeleton className="h-4 w-1/2" />
         </div>
-      </div>
-    );
+      </div>;
   }
-
   if (!user) {
     return <Navigate to="/login" replace />;
   }
-
-  return (
-    <SidebarProvider defaultOpen>
+  return <SidebarProvider defaultOpen>
       <div className="flex min-h-screen w-full">
         {/* Desktop Sidebar - persistent */}
         <div className="hidden md:block">
@@ -46,7 +44,7 @@ export function ProtectedLayout() {
             
             {/* Restaurant name */}
             <div className="hidden sm:flex items-center gap-2">
-              <Store className="h-4 w-4 text-muted-foreground" />
+              
               <span className="font-semibold text-foreground">
                 {outletSettings?.name || 'PocketCafe'}
               </span>
@@ -82,6 +80,5 @@ export function ProtectedLayout() {
           <MobileNav />
         </SidebarInset>
       </div>
-    </SidebarProvider>
-  );
+    </SidebarProvider>;
 }
