@@ -1,6 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { StaffProfile } from '@/types/staff';
+ 
+ interface StaffProfileWithFaceToken extends StaffProfile {
+   face_token?: string | null;
+ }
 import { toast } from 'sonner';
 
 export function useStaff() {
@@ -15,7 +19,7 @@ export function useStaff() {
         .order('name');
       
       if (error) throw error;
-      return data as StaffProfile[];
+       return data as StaffProfileWithFaceToken[];
     },
   });
 
@@ -79,7 +83,7 @@ export function useStaff() {
   });
 
   return {
-    staff: staffQuery.data ?? [],
+     staff: staffQuery.data ?? [] as StaffProfileWithFaceToken[],
     isLoading: staffQuery.isLoading,
     isError: staffQuery.isError,
     error: staffQuery.error,
