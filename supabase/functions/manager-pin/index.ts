@@ -1,10 +1,10 @@
  import { createClient } from "npm:@supabase/supabase-js@2";
- import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
+ import { hash, compare } from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
  
  const corsHeaders = {
    "Access-Control-Allow-Origin": "*",
    "Access-Control-Allow-Headers":
-     "authorization, x-client-info, apikey, content-type",
+     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
  };
  
  interface PinRequest {
@@ -16,10 +16,22 @@
  Deno.serve(async (req) => {
    // Handle CORS preflight
    if (req.method === "OPTIONS") {
-     return new Response(null, { headers: corsHeaders });
+     return new Response("ok", { headers: corsHeaders });
    }
  
    try {
+     const supabaseUrl = Deno.env.get("SUPABASE_URL");
+     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+     const anonKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+ 
+     if (!supabaseUrl || !serviceRoleKey) {
+       console.error("Missing required environment variables");
+       return new Response(
+         JSON.stringify({ error: "Server configuration error" }),
+         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+       );
+     }
+ 
      const { action, pin, current_pin } = (await req.json()) as PinRequest;
  
      // Validate PIN format (4-8 digits)
@@ -32,8 +44,8 @@
  
      // Create service role client for database operations
      const supabaseAdmin = createClient(
-       Deno.env.get("SUPABASE_URL") ?? "",
-       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+       supabaseUrl,
+       serviceRoleKey
      );
  
      if (action === "set") {
@@ -48,8 +60,8 @@
  
        // Create user client to verify auth
        const supabaseUser = createClient(
-         Deno.env.get("SUPABASE_URL") ?? "",
-         Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "",
+         supabaseUrl,
+         anonKey ?? "",
          { global: { headers: { Authorization: authHeader } } }
        );
  
@@ -87,7 +99,7 @@
            .single();
  
          if (existingPin) {
-           const isValid = await bcrypt.compare(current_pin, existingPin.pin_hash);
+           const isValid = await compare(current_pin, existingPin.pin_hash);
            if (!isValid) {
              return new Response(
                JSON.stringify({ error: "Current PIN is incorrect" }),
@@ -98,7 +110,7 @@
        }
  
        // Hash the new PIN with bcrypt (cost factor 10)
-       const pinHash = await bcrypt.hash(pin);
+       const pinHash = await hash(pin);
  
        // Upsert to manager_pins table
        const { error: upsertError } = await supabaseAdmin
@@ -141,7 +153,7 @@
  
        // Compare against each hash (bcrypt.compare is timing-safe)
        for (const pinRecord of pins) {
-         const isMatch = await bcrypt.compare(pin, pinRecord.pin_hash);
+         const isMatch = await compare(pin, pinRecord.pin_hash);
          if (isMatch) {
            return new Response(
              JSON.stringify({ valid: true, manager_id: pinRecord.user_id }),
@@ -161,6 +173,7 @@
        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
      );
    } catch (error) {
+     console.error("Edge function error:", error);
      return new Response(
        JSON.stringify({ error: "Internal server error" }),
        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
