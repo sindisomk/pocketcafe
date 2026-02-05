@@ -1,210 +1,131 @@
 
 
 ## Goal
-Implement secure manager PIN storage and verification using bcrypt hashing via a backend function, replacing the current placeholder logic.
+Fix the staff member list not displaying in the Manager Override → Select Staff Member modal by using the public staff view that doesn't require admin/manager roles.
 
-## Current State Analysis
+## Root Cause
 
-| Component | Current Status |
-|-----------|---------------|
-| `manager_pins` table | Exists with `user_id`, `pin_hash` columns |
-| RLS policies | Admins can manage all PINs, users can view own |
-| PIN verification | Accepts any 4+ digit PIN (placeholder) |
-| PIN settings save | UI only, doesn't persist to database |
-| Backend functions | None exist |
+The `StaffSelectModal` component uses the `useStaff()` hook which queries the `staff_profiles` table. This table has Row-Level Security (RLS) policies that restrict access:
 
-## Security Architecture
+| User Role | Can View |
+|-----------|----------|
+| Admin | All staff profiles |
+| Manager | All staff profiles |
+| Regular Staff | Only their own profile |
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│                        FRONTEND                                  │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌──────────────────────┐      ┌──────────────────────┐        │
-│  │  ManagerPinSettings  │      │   ManagerPinPad      │        │
-│  │  (Admin/Manager)     │      │   (Kiosk)            │        │
-│  │                      │      │                      │        │
-│  │  - Set new PIN       │      │  - Enter PIN         │        │
-│  │  - Change PIN        │      │  - Verify            │        │
-│  └──────────┬───────────┘      └──────────┬───────────┘        │
-│             │                              │                    │
-└─────────────┼──────────────────────────────┼────────────────────┘
-              │                              │
-              ▼                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    BACKEND FUNCTIONS                             │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌──────────────────────┐      ┌──────────────────────┐        │
-│  │  manager-pin         │      │  manager-pin         │        │
-│  │  action: "set"       │      │  action: "verify"    │        │
-│  │                      │      │                      │        │
-│  │  - Validate format   │      │  - No auth required  │        │
-│  │  - Hash with bcrypt  │      │  - Compare hash      │        │
-│  │  - Upsert to DB      │      │  - Return success    │        │
-│  └──────────┬───────────┘      └──────────┬───────────┘        │
-│             │                              │                    │
-└─────────────┼──────────────────────────────┼────────────────────┘
-              │                              │
-              ▼                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    DATABASE                                      │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  manager_pins                                                    │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │ id | user_id | pin_hash (bcrypt)      | created/updated  │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  RLS: Admins manage all, users view own                         │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
+When a non-admin/non-manager user accesses the Kiosk and enters a valid PIN, the staff list query returns empty because they don't have permission to view all staff.
 
-## Implementation Plan
+## Solution
 
-### Step 1: Create Backend Function for PIN Operations
+Use the existing `staff_profiles_public` view which:
+- Has no RLS restrictions (accessible to all authenticated users)
+- Excludes sensitive fields (NI number, contact email/phone, tax code)
+- Contains all fields needed for staff selection (id, name, photo, role)
 
-Create a single backend function `manager-pin` that handles both setting and verifying PINs:
+## Implementation Steps
 
-**File:** `supabase/functions/manager-pin/index.ts`
+### Step 1: Create a Kiosk-specific Staff Hook
+
+Create a new hook `useKioskStaff` that fetches from `staff_profiles_public` view instead of the restricted `staff_profiles` table.
+
+**File:** `src/hooks/useKioskStaff.ts`
 
 ```text
-Endpoints:
-  POST /manager-pin
-  Body: { action: "set", pin: "1234", current_pin?: "oldpin" }
-    - Requires authenticated admin/manager
-    - Validates PIN format (4-8 digits)
-    - Hashes PIN with bcrypt (cost factor 10)
-    - If current_pin provided, verify it first
-    - Upserts to manager_pins table
-    - Returns { success: true }
-
-  POST /manager-pin  
-  Body: { action: "verify", pin: "1234" }
-    - No authentication required (Kiosk use)
-    - Fetches all manager PIN hashes (using service role)
-    - Compares against each hash
-    - Returns { valid: true, manager_id: "..." } if match
-    - Returns { valid: false } if no match
-```
-
-### Step 2: Update ManagerPinSettings Component
-
-Modify `src/components/settings/ManagerPinSettings.tsx` to:
-- Call the backend function to set/update PIN
-- Handle current PIN verification when changing
-- Show proper loading states and error messages
-- Clear form on successful save
-
-### Step 3: Update ManagerPinPad Component  
-
-Modify `src/components/kiosk/ManagerPinPad.tsx` to:
-- Call the backend function to verify PIN
-- Handle verification response
-- Show proper error messages for invalid PIN
-- Return manager info on success for audit trail
-
-### Step 4: Create Custom Hook for PIN Operations
-
-Create `src/hooks/useManagerPin.ts` to:
-- Provide `verifyPin(pin)` function
-- Provide `setPin(newPin, currentPin?)` function
+Purpose: Fetch staff list from public view for Kiosk use
+- Query staff_profiles_public view
+- Return minimal staff data needed for selection
 - Handle loading and error states
-- Encapsulate backend function calls
+```
 
-## Files to be Created/Modified
+### Step 2: Update StaffSelectModal
+
+Modify `StaffSelectModal` to use the new `useKioskStaff` hook instead of `useStaff`.
+
+**File:** `src/components/kiosk/StaffSelectModal.tsx`
+
+Changes:
+- Import `useKioskStaff` instead of `useStaff`
+- Adjust type handling for nullable fields from the view
+
+## Files to Create/Modify
 
 | File | Action | Description |
 |------|--------|-------------|
-| `supabase/functions/manager-pin/index.ts` | Create | Backend function for hash/verify |
-| `src/hooks/useManagerPin.ts` | Create | Hook for PIN operations |
-| `src/components/settings/ManagerPinSettings.tsx` | Modify | Use hook to persist PIN |
-| `src/components/kiosk/ManagerPinPad.tsx` | Modify | Use hook to verify PIN |
+| `src/hooks/useKioskStaff.ts` | Create | Hook that queries staff_profiles_public |
+| `src/components/kiosk/StaffSelectModal.tsx` | Modify | Use the new hook |
 
 ## Technical Details
 
-### Backend Function Implementation
+### New Hook Implementation
 
 ```typescript
-// supabase/functions/manager-pin/index.ts
-import { createClient } from "npm:@supabase/supabase-js@2";
-import * as bcrypt from "jsr:@da/bcrypt";
+// src/hooks/useKioskStaff.ts
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
-Deno.serve(async (req) => {
-  // Handle CORS
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+interface KioskStaff {
+  id: string;
+  name: string;
+  profile_photo_url: string | null;
+  role: string;
+}
 
-  const { action, pin, current_pin } = await req.json();
-  
-  if (action === "set") {
-    // Require authentication
-    const authHeader = req.headers.get("Authorization");
-    // Validate user is admin/manager
-    // Hash PIN: bcrypt.hashSync(pin, 10)
-    // Upsert to manager_pins
-  }
-  
-  if (action === "verify") {
-    // No auth required - Kiosk use case
-    // Fetch all PIN hashes using service role client
-    // Compare: bcrypt.compareSync(pin, hash)
-    // Return match result
-  }
-});
+export function useKioskStaff() {
+  const query = useQuery({
+    queryKey: ['kiosk-staff'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('staff_profiles_public')
+        .select('id, name, profile_photo_url, role')
+        .order('name');
+      
+      if (error) throw error;
+      
+      // Filter out any null id entries and cast types
+      return (data ?? []).filter(s => s.id && s.name) as KioskStaff[];
+    },
+  });
+
+  return {
+    staff: query.data ?? [],
+    isLoading: query.isLoading,
+    isError: query.isError,
+  };
+}
 ```
 
-### Frontend Hook Implementation
+### Modal Update
 
 ```typescript
-// src/hooks/useManagerPin.ts
-export function useManagerPin() {
-  const verifyPin = async (pin: string) => {
-    const response = await supabase.functions.invoke("manager-pin", {
-      body: { action: "verify", pin },
-    });
-    return response.data;
-  };
+// StaffSelectModal.tsx changes
+import { useKioskStaff } from '@/hooks/useKioskStaff';
 
-  const setPin = async (newPin: string, currentPin?: string) => {
-    const response = await supabase.functions.invoke("manager-pin", {
-      body: { action: "set", pin: newPin, current_pin: currentPin },
-    });
-    return response.data;
-  };
+// Replace:
+const { staff, isLoading } = useStaff();
 
-  return { verifyPin, setPin };
-}
+// With:
+const { staff, isLoading } = useKioskStaff();
 ```
 
 ## Security Considerations
 
-1. **PIN never stored in plain text** - Always hashed with bcrypt before storage
-2. **PIN never logged** - No console.log or error messages containing the PIN
-3. **Verification is timing-safe** - bcrypt.compareSync handles this internally
-4. **Rate limiting consideration** - For production, add rate limiting to prevent brute force
-5. **Audit trail** - Return manager_id on successful verification for attendance records
-6. **No PIN in responses** - API never returns the PIN or hash in responses
+The `staff_profiles_public` view intentionally exposes only non-sensitive fields:
+- id, name, profile_photo_url, role, contract_type, hourly_rate
 
-## Success Criteria
+It does NOT expose:
+- NI numbers
+- Contact email/phone
+- Tax codes
+- NIC categories
 
-- Admin/Manager can set a new PIN from Settings
-- PIN is stored as bcrypt hash in database
-- Kiosk PIN pad verifies against stored hashes
-- Invalid PIN shows appropriate error message
-- Successful verification allows manager override
-- Attendance records can track which manager authorized override
+This is the correct approach for Kiosk mode where the goal is staff identification for clock-in/out, not access to sensitive employee data.
 
 ## Testing Steps
 
-1. Go to Settings > Manager PIN tab as admin
-2. Enter a new PIN (e.g., "1234") and confirm it
-3. Click "Update PIN" - should succeed
-4. Go to Kiosk page (/kiosk)
-5. Click "Manager Override" button
-6. Enter the PIN "1234" - should succeed and open staff select
-7. Try entering wrong PIN "9999" - should show error message
-8. Verify database has hashed PIN (not plain text)
+1. Log in as a non-admin user (or regular staff member)
+2. Navigate to the Kiosk page (/kiosk)
+3. Click "Manager Override" button
+4. Enter a valid manager PIN
+5. Verify the "Select Staff Member" modal now shows all staff members
+6. Select a staff member and confirm the clock action modal appears
 
