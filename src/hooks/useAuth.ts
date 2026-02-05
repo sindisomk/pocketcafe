@@ -3,8 +3,8 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
 export type AppRole = 'admin' | 'manager' | null;
- 
- // Watchdog timeout: if auth doesn't resolve in this time, force redirect to login
+
+// Watchdog timeout: if auth doesn't resolve in this time, force loading: false
  const AUTH_TIMEOUT_MS = 4000;
 
 interface AuthState {
@@ -24,11 +24,11 @@ export function useAuth() {
 
   useEffect(() => {
     let isMounted = true;
-     let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+    let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+    let initialLoadComplete = false;
 
     const safeSetState = (next: AuthState) => {
       if (!isMounted) return;
-       // Clear watchdog when we successfully set state with loading: false
        if (!next.loading && watchdogTimer) {
          clearTimeout(watchdogTimer);
          watchdogTimer = null;
@@ -36,7 +36,7 @@ export function useAuth() {
       setAuthState(next);
     };
 
-    const fetchRole = async (userId: string) => {
+    const fetchRole = async (userId: string): Promise<AppRole> => {
        try {
          const { data, error } = await supabase
            .from('user_roles')
@@ -44,7 +44,6 @@ export function useAuth() {
            .eq('user_id', userId)
            .maybeSingle();
  
-         // If RLS blocks role reads (or any other error), don't brick the app.
          if (error) {
            console.warn('[useAuth] Error fetching role:', error.message);
            return null;
@@ -56,7 +55,44 @@ export function useAuth() {
        }
     };
 
-     // Watchdog: if loading doesn't resolve in time, force-complete with no user
+    // 1. SET UP LISTENER FIRST (before getSession) - critical for catching auth events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        console.log('[useAuth] onAuthStateChange:', event);
+        
+        // Skip if initial load hasn't completed yet - let initializeAuth handle it
+        if (!initialLoadComplete) {
+          console.log('[useAuth] Skipping - initial load not complete');
+          return;
+        }
+
+        const user = session?.user ?? null;
+        
+        // Update user/session immediately (don't await role fetch)
+        safeSetState({
+          user,
+          session,
+          loading: false,
+          role: authState.role, // Keep existing role temporarily
+        });
+
+        // Fetch role in background (fire-and-forget)
+        if (user) {
+          fetchRole(user.id).then(role => {
+            if (isMounted) {
+              setAuthState(prev => ({ ...prev, role }));
+            }
+          });
+        } else {
+          // User signed out - clear role
+          if (isMounted) {
+            setAuthState(prev => ({ ...prev, role: null }));
+          }
+        }
+      }
+    );
+
+    // Watchdog: force loading: false if stuck
      watchdogTimer = setTimeout(() => {
        if (isMounted) {
          console.warn('[useAuth] Watchdog timeout reached - forcing loading: false');
@@ -64,30 +100,13 @@ export function useAuth() {
        }
      }, AUTH_TIMEOUT_MS);
  
-    // Get initial session first
-    supabase.auth
-      .getSession()
-      .then(async ({ data: { session } }) => {
-        const user = session?.user ?? null;
-        const role = user ? await fetchRole(user.id) : null;
-
-        safeSetState({
-          user,
-          session,
-          loading: false,
-          role,
-        });
-      })
-      .catch(() => {
-        // Never keep the UI stuck loading on unexpected failures.
-         console.error('[useAuth] getSession failed');
-        safeSetState({ user: null, session: null, loading: false, role: null });
-      });
-
-    // Then set up listener for future changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // 2. THEN check initial session
+    const initializeAuth = async () => {
       try {
+        const { data: { session } } = await supabase.auth.getSession();
         const user = session?.user ?? null;
+        
+        // Await role fetch for initial load only
         const role = user ? await fetchRole(user.id) : null;
 
         safeSetState({
@@ -96,10 +115,16 @@ export function useAuth() {
           loading: false,
           role,
         });
-      } catch {
+        
+        initialLoadComplete = true;
+      } catch (err) {
+        console.error('[useAuth] getSession failed:', err);
         safeSetState({ user: null, session: null, loading: false, role: null });
+        initialLoadComplete = true;
       }
-    });
+    };
+
+    initializeAuth();
 
     return () => {
       isMounted = false;
