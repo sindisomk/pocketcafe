@@ -10,7 +10,7 @@
  import { Input } from '@/components/ui/input';
  import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
  import { ScrollArea } from '@/components/ui/scroll-area';
- import { useStaff } from '@/hooks/useStaff';
+import { useKioskStaff } from '@/hooks/useKioskStaff';
  import { Skeleton } from '@/components/ui/skeleton';
  
  interface StaffSelectModalProps {
@@ -20,7 +20,7 @@
  }
  
  export function StaffSelectModal({ open, onOpenChange, onStaffSelected }: StaffSelectModalProps) {
-   const { staff, isLoading } = useStaff();
+  const { staff, isLoading } = useKioskStaff();
    const [search, setSearch] = useState('');
  
    const filteredStaff = staff.filter((s) =>
