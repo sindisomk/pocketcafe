@@ -19,6 +19,179 @@ const WEEKLY_OVERTIME_THRESHOLD = 40;
 // Overtime pay multiplier (1.5x = time and a half)
 const OVERTIME_MULTIPLIER = 1.5;
 
+ // ============================================
+ // UK PAYE Income Tax Thresholds 2024/25
+ // ============================================
+ // Personal Allowance: £12,570/year = £242/week = £1,048/month
+ // Basic Rate (20%): £12,571 - £50,270
+ // Higher Rate (40%): £50,271 - £125,140
+ // Additional Rate (45%): Over £125,140
+ 
+ const TAX_PERSONAL_ALLOWANCE_WEEKLY = 242;
+ const TAX_BASIC_RATE_LIMIT_WEEKLY = 967; // (£50,270 - £12,570) / 52
+ const TAX_HIGHER_RATE_LIMIT_WEEKLY = 2165; // (£125,140 - £12,570) / 52
+ 
+ const TAX_BASIC_RATE = 0.20;
+ const TAX_HIGHER_RATE = 0.40;
+ const TAX_ADDITIONAL_RATE = 0.45;
+ 
+ // ============================================
+ // UK National Insurance Thresholds 2024/25
+ // ============================================
+ // Primary Threshold: £242/week (£1,048/month, £12,570/year)
+ // Upper Earnings Limit: £967/week (£4,189/month, £50,270/year)
+ // Employee NIC rate: 8% between PT and UEL
+ // Employee NIC rate: 2% above UEL
+ 
+ const NIC_PRIMARY_THRESHOLD_WEEKLY = 242;
+ const NIC_UPPER_EARNINGS_LIMIT_WEEKLY = 967;
+ const NIC_MAIN_RATE = 0.08;    // 8% (reduced from 12% in Jan 2024)
+ const NIC_UPPER_RATE = 0.02;   // 2% above UEL
+ 
+ // NIC Category adjustments (percentage modifiers)
+ const NIC_CATEGORY_RATES: Record<string, { mainRate: number; upperRate: number }> = {
+   'A': { mainRate: 0.08, upperRate: 0.02 },  // Standard rate
+   'B': { mainRate: 0.0585, upperRate: 0.02 }, // Married women's reduced rate
+   'C': { mainRate: 0, upperRate: 0 },         // Over State Pension age
+   'F': { mainRate: 0.08, upperRate: 0.02 },   // Freeport standard
+   'H': { mainRate: 0.08, upperRate: 0.02 },   // Apprentice under 25
+   'J': { mainRate: 0, upperRate: 0.02 },      // Deferment
+   'M': { mainRate: 0.08, upperRate: 0.02 },   // Under 21
+   'V': { mainRate: 0, upperRate: 0.02 },      // Veteran first year
+   'Z': { mainRate: 0, upperRate: 0.02 },      // Under 21 deferment
+ };
+ 
+ /**
+  * Parse UK tax code to get personal allowance
+  * Common codes: 1257L (standard), BR (basic rate only), 0T (no allowance)
+  */
+ function parseUKTaxCode(taxCode: string): { allowance: number; isBasicRateOnly: boolean } {
+   const code = (taxCode || '1257L').toUpperCase().trim();
+   
+   // BR = Basic Rate only (no personal allowance)
+   if (code === 'BR') {
+     return { allowance: 0, isBasicRateOnly: true };
+   }
+   
+   // D0 = Higher rate (40%) on all income
+   if (code === 'D0') {
+     return { allowance: 0, isBasicRateOnly: false };
+   }
+   
+   // D1 = Additional rate (45%) on all income
+   if (code === 'D1') {
+     return { allowance: 0, isBasicRateOnly: false };
+   }
+   
+   // NT = No Tax
+   if (code === 'NT') {
+     return { allowance: Infinity, isBasicRateOnly: false };
+   }
+   
+   // 0T = No personal allowance
+   if (code === '0T') {
+     return { allowance: 0, isBasicRateOnly: false };
+   }
+   
+   // Extract numeric portion (e.g., 1257L -> 1257)
+   const match = code.match(/^([SC]?)(\d+)/);
+   if (match) {
+     const numericPart = parseInt(match[2], 10);
+     // Tax codes represent allowance in £10s
+     const weeklyAllowance = (numericPart * 10) / 52;
+     return { allowance: weeklyAllowance, isBasicRateOnly: false };
+   }
+   
+   // Default to standard personal allowance
+   return { allowance: TAX_PERSONAL_ALLOWANCE_WEEKLY, isBasicRateOnly: false };
+ }
+ 
+ /**
+  * Calculate UK PAYE income tax (weekly basis)
+  */
+ export function calculatePAYE(weeklyGross: number, taxCode: string): number {
+   const { allowance, isBasicRateOnly } = parseUKTaxCode(taxCode);
+   
+   // NT code = no tax
+   if (allowance === Infinity) {
+     return 0;
+   }
+   
+   // BR code = 20% on everything
+   if (isBasicRateOnly) {
+     return Math.max(0, weeklyGross * TAX_BASIC_RATE);
+   }
+   
+   // D0 code = 40% on everything
+   if (taxCode.toUpperCase() === 'D0') {
+     return Math.max(0, weeklyGross * TAX_HIGHER_RATE);
+   }
+   
+   // D1 code = 45% on everything
+   if (taxCode.toUpperCase() === 'D1') {
+     return Math.max(0, weeklyGross * TAX_ADDITIONAL_RATE);
+   }
+   
+   // Taxable income after personal allowance
+   const taxableIncome = Math.max(0, weeklyGross - allowance);
+   
+   if (taxableIncome <= 0) {
+     return 0;
+   }
+   
+   let tax = 0;
+   
+   // Basic rate band (20%)
+   const basicRatePortion = Math.min(taxableIncome, TAX_BASIC_RATE_LIMIT_WEEKLY);
+   tax += basicRatePortion * TAX_BASIC_RATE;
+   
+   // Higher rate band (40%)
+   if (taxableIncome > TAX_BASIC_RATE_LIMIT_WEEKLY) {
+     const higherRatePortion = Math.min(
+       taxableIncome - TAX_BASIC_RATE_LIMIT_WEEKLY,
+       TAX_HIGHER_RATE_LIMIT_WEEKLY - TAX_BASIC_RATE_LIMIT_WEEKLY
+     );
+     tax += higherRatePortion * TAX_HIGHER_RATE;
+   }
+   
+   // Additional rate band (45%)
+   if (taxableIncome > TAX_HIGHER_RATE_LIMIT_WEEKLY) {
+     const additionalRatePortion = taxableIncome - TAX_HIGHER_RATE_LIMIT_WEEKLY;
+     tax += additionalRatePortion * TAX_ADDITIONAL_RATE;
+   }
+   
+   return Math.round(tax * 100) / 100;
+ }
+ 
+ /**
+  * Calculate UK Employee National Insurance Contributions (weekly basis)
+  */
+ export function calculateEmployeeNIC(weeklyGross: number, nicCategory: string): number {
+   const rates = NIC_CATEGORY_RATES[nicCategory?.toUpperCase()] || NIC_CATEGORY_RATES['A'];
+   
+   // No NIC if below primary threshold
+   if (weeklyGross <= NIC_PRIMARY_THRESHOLD_WEEKLY) {
+     return 0;
+   }
+   
+   let nic = 0;
+   
+   // Main rate on earnings between Primary Threshold and Upper Earnings Limit
+   const mainRateEarnings = Math.min(
+     weeklyGross - NIC_PRIMARY_THRESHOLD_WEEKLY,
+     NIC_UPPER_EARNINGS_LIMIT_WEEKLY - NIC_PRIMARY_THRESHOLD_WEEKLY
+   );
+   nic += mainRateEarnings * rates.mainRate;
+   
+   // Upper rate on earnings above UEL
+   if (weeklyGross > NIC_UPPER_EARNINGS_LIMIT_WEEKLY) {
+     const upperRateEarnings = weeklyGross - NIC_UPPER_EARNINGS_LIMIT_WEEKLY;
+     nic += upperRateEarnings * rates.upperRate;
+   }
+   
+   return Math.round(nic * 100) / 100;
+ }
+ 
  /**
   * Calculate hours worked from an attendance record
   * Includes the 30-minute paid break in total hours
@@ -103,6 +276,12 @@ const OVERTIME_MULTIPLIER = 1.5;
      grossPay: Math.round(grossPay * 100) / 100,
     overtimePay: Math.round(overtimePay * 100) / 100,
      holidayAccrual: Math.round(holidayAccrual * 100) / 100,
+    // Tax & NIC calculations
+    taxCode: staff.tax_code || '1257L',
+    nicCategory: staff.nic_category || 'A',
+    incomeTax: Math.round(calculatePAYE(grossPay, staff.tax_code || '1257L') * 100) / 100,
+    employeeNIC: Math.round(calculateEmployeeNIC(grossPay, staff.nic_category || 'A') * 100) / 100,
+    netPay: Math.round((grossPay - calculatePAYE(grossPay, staff.tax_code || '1257L') - calculateEmployeeNIC(grossPay, staff.nic_category || 'A')) * 100) / 100,
    };
  }
  
@@ -177,6 +356,11 @@ const OVERTIME_MULTIPLIER = 1.5;
     'Overtime Pay (£)',
      'Gross Pay (£)',
      'Holiday Accrual (£)',
+    'Tax Code',
+    'PAYE Tax (£)',
+    'NIC Category',
+    'Employee NIC (£)',
+    'Net Pay (£)',
    ];
  
    const rows = summaries.map((s) => [
@@ -189,6 +373,11 @@ const OVERTIME_MULTIPLIER = 1.5;
     s.overtimePay.toFixed(2),
      s.grossPay.toFixed(2),
      s.holidayAccrual.toFixed(2),
+    s.taxCode,
+    s.incomeTax.toFixed(2),
+    s.nicCategory,
+    s.employeeNIC.toFixed(2),
+    s.netPay.toFixed(2),
    ]);
  
    const csvContent = [
@@ -200,8 +389,11 @@ const OVERTIME_MULTIPLIER = 1.5;
      ...rows.map((row) => row.join(',')),
      '',
     `Total Overtime Pay,,,,,,£${summaries.reduce((sum, s) => sum + s.overtimePay, 0).toFixed(2)},`,
-    `Total Gross Pay,,,,,,,£${summaries.reduce((sum, s) => sum + s.grossPay, 0).toFixed(2)},`,
-    `Total Holiday Accrual,,,,,,,,£${summaries.reduce((sum, s) => sum + s.holidayAccrual, 0).toFixed(2)}`,
+   `Total Gross Pay,,,,,,,£${summaries.reduce((sum, s) => sum + s.grossPay, 0).toFixed(2)},,,,,`,
+   `Total Holiday Accrual,,,,,,,,£${summaries.reduce((sum, s) => sum + s.holidayAccrual, 0).toFixed(2)},,,,`,
+   `Total PAYE Tax,,,,,,,,,,£${summaries.reduce((sum, s) => sum + s.incomeTax, 0).toFixed(2)},,,`,
+   `Total Employee NIC,,,,,,,,,,,,£${summaries.reduce((sum, s) => sum + s.employeeNIC, 0).toFixed(2)},`,
+   `Total Net Pay,,,,,,,,,,,,,£${summaries.reduce((sum, s) => sum + s.netPay, 0).toFixed(2)}`,
    ];
  
    return csvContent.join('\n');
