@@ -243,7 +243,7 @@ export default function Index() {
           </CardDescription>
         </CardHeader>
          <CardContent>
-           <div className="grid gap-4 sm:grid-cols-3">
+           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
              <div className="p-4 rounded-lg bg-success/10 border border-success/20">
                <div className="flex items-center gap-2 mb-2">
                  <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
