@@ -46,7 +46,9 @@ export function AppSidebar() {
   const collapsed = state === 'collapsed';
   const {
     signOut,
-    user
+    user,
+    isAdmin,
+    isManager
   } = useAuth();
   const handleSignOut = async () => {
     await signOut();
@@ -59,7 +61,7 @@ export function AppSidebar() {
           </div>
           {!collapsed && <div className="flex flex-col">
               <span className="text-lg font-semibold text-sidebar-foreground">PocketCafe</span>
-              <span className="text-xs text-sidebar-foreground/60">Management</span>
+              <span className="text-xs text-sidebar-foreground/60">{isAdmin ? 'Admin' : isManager ? 'Manager' : 'Staff'}</span>
             </div>}
         </div>
       </SidebarHeader>
