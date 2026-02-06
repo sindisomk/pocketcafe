@@ -330,8 +330,8 @@ export default function Payroll() {
                   <TableHead>Staff Member</TableHead>
                   <TableHead className="text-right">Total Hours</TableHead>
                   <TableHead className="text-right">Overtime</TableHead>
+                  <TableHead className="text-right">OT Pay</TableHead>
                   <TableHead className="text-right">Gross Pay</TableHead>
-                  <TableHead className="text-right">Tax Code</TableHead>
                   <TableHead className="text-right">PAYE Tax</TableHead>
                   <TableHead className="text-right">Employee NIC</TableHead>
                   <TableHead className="text-right">Net Pay</TableHead>
@@ -361,13 +361,11 @@ export default function Payroll() {
                         <TableCell className="text-right font-mono">
                           {summary.overtimeHours > 0 ? summary.overtimeHours.toFixed(2) : '—'}
                         </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {summary.overtimePay > 0 ? `£${summary.overtimePay.toFixed(2)}` : '—'}
+                        </TableCell>
                         <TableCell className="text-right font-mono font-medium">
                           £{summary.grossPay.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant="secondary" className="font-mono text-xs">
-                            {summary.taxCode}
-                          </Badge>
                         </TableCell>
                         <TableCell className="text-right font-mono text-destructive">
                           {summary.incomeTax > 0 ? `-£${summary.incomeTax.toFixed(2)}` : '—'}
@@ -399,9 +397,11 @@ export default function Payroll() {
                     {totals.overtimeHours > 0 ? totals.overtimeHours.toFixed(2) : '—'}
                   </TableCell>
                   <TableCell className="text-right font-mono">
+                    {totals.overtimePay > 0 ? `£${totals.overtimePay.toFixed(2)}` : '—'}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
                     £{totals.grossPay.toFixed(2)}
                   </TableCell>
-                  <TableCell />
                   <TableCell className="text-right font-mono text-destructive">
                     -£{totals.incomeTax.toFixed(2)}
                   </TableCell>
