@@ -127,9 +127,16 @@ export function useSchedule(weekStartDate: Date) {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Revert schedule to draft so user can republish
+      if (scheduleQuery.data?.id && scheduleQuery.data.status === 'published') {
+        await supabase
+          .from('weekly_schedules')
+          .update({ status: 'draft', published_at: null })
+          .eq('id', scheduleQuery.data.id);
+        queryClient.invalidateQueries({ queryKey: queryKeys.weeklySchedule(weekStart) });
+      }
       queryClient.invalidateQueries({ queryKey: queryKeys.shifts(weekStart) });
-      // Also invalidate today's shifts for TodayRoster
       const today = format(new Date(), 'yyyy-MM-dd');
       queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(today) });
     },
@@ -152,7 +159,15 @@ export function useSchedule(weekStartDate: Date) {
       
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Revert schedule to draft so user can republish
+      if (scheduleQuery.data?.id && scheduleQuery.data.status === 'published') {
+        await supabase
+          .from('weekly_schedules')
+          .update({ status: 'draft', published_at: null })
+          .eq('id', scheduleQuery.data.id);
+        queryClient.invalidateQueries({ queryKey: queryKeys.weeklySchedule(weekStart) });
+      }
       queryClient.invalidateQueries({ queryKey: queryKeys.shifts(weekStart) });
       const today = format(new Date(), 'yyyy-MM-dd');
       queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(today) });
