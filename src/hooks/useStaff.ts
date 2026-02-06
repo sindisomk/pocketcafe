@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { StaffProfile } from '@/types/staff';
 import { queryKeys } from '@/lib/queryKeys';
 import { toast } from 'sonner';
+import { useAuth } from '@/hooks/useAuth';
 
 interface StaffProfileWithFaceToken extends StaffProfile {
   face_token?: string | null;
@@ -26,17 +27,44 @@ type AdminUpdatableFields = Partial<StaffProfile> & { id: string };
 
 export function useStaff() {
   const queryClient = useQueryClient();
+  const { isAdmin } = useAuth();
 
   const staffQuery = useQuery({
-    queryKey: queryKeys.staff,
+    queryKey: [...queryKeys.staff, isAdmin ? 'admin' : 'manager'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('staff_profiles')
-        .select('*')
-        .order('name');
-      
-      if (error) throw error;
-      return data as StaffProfileWithFaceToken[];
+      if (isAdmin) {
+        // Admins get full access to all columns via base table
+        const { data, error } = await supabase
+          .from('staff_profiles')
+          .select('*')
+          .order('name');
+        
+        if (error) throw error;
+        return data as StaffProfileWithFaceToken[];
+      } else {
+        // Managers/staff use the secure view (excludes ni_number, tax_code, hourly_rate, face_token, nic_category)
+        const { data, error } = await supabase
+          .from('staff_profiles_manager')
+          .select('*')
+          .order('name');
+        
+        if (error) throw error;
+        return (data ?? []).map(d => ({
+          ...d,
+          // Provide safe defaults for fields excluded from manager view
+          hourly_rate: 0,
+          ni_number: null,
+          tax_code: null,
+          nic_category: null,
+          face_token: null,
+          contract_type: d.contract_type ?? 'zero_rate',
+          role: d.role ?? 'floor',
+          name: d.name ?? '',
+          id: d.id ?? '',
+          created_at: d.created_at ?? '',
+          updated_at: d.updated_at ?? '',
+        })) as StaffProfileWithFaceToken[];
+      }
     },
   });
 
