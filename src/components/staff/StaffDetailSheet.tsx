@@ -75,7 +75,7 @@ export function StaffDetailSheet({ staff, open, onOpenChange, onEdit }: StaffDet
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-md">
+      <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader className="space-y-4">
           <div className="flex items-center gap-4">
             <Avatar className="h-20 w-20 border-2 border-muted">
