@@ -1,11 +1,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Users, Clock, Calendar, AlertTriangle, PoundSterling, Coffee, ArrowRight } from 'lucide-react';
+import { Users, Clock, Calendar, AlertTriangle, PoundSterling, Coffee, ArrowRight, ClipboardList } from 'lucide-react';
 import { useAttendance } from '@/hooks/useAttendance';
 import { useStaff } from '@/hooks/useStaff';
 import { useSchedule } from '@/hooks/useSchedule';
 import { useNoShows } from '@/hooks/useNoShows';
+import { useLeaveRequests } from '@/hooks/useLeaveRequests';
 import { checkRestPeriodViolations } from '@/lib/payroll';
 import { format, startOfWeek } from 'date-fns';
 import { Link } from 'react-router-dom';
@@ -18,6 +19,9 @@ export default function Index() {
   const { staff } = useStaff();
   const { shifts } = useSchedule(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const { noShows } = useNoShows();
+  const { leaveRequests } = useLeaveRequests();
+
+  const pendingLeave = leaveRequests.filter(r => r.status === 'pending');
 
   const clockedIn = attendance.filter(a => a.status === 'clocked_in').length;
   const onBreak = attendance.filter(a => a.status === 'on_break').length;
@@ -258,15 +262,31 @@ export default function Index() {
                <p className="text-sm text-muted-foreground">registered</p>
              </div>
 
-             <div className="p-4 rounded-lg bg-muted border">
-               <div className="flex items-center gap-2 mb-2">
-                 <Calendar className="h-4 w-4 text-muted-foreground" />
-                 <span className="text-sm font-medium">This Week</span>
-               </div>
-               <p className="text-2xl font-bold">{shifts.length}</p>
-               <p className="text-sm text-muted-foreground">shifts scheduled</p>
-             </div>
-           </div>
+              <div className="p-4 rounded-lg bg-muted border">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">This Week</span>
+                </div>
+                <p className="text-2xl font-bold">{shifts.length}</p>
+                <p className="text-sm text-muted-foreground">shifts scheduled</p>
+              </div>
+
+              <div className={`p-4 rounded-lg border ${pendingLeave.length > 0 ? 'bg-warning/10 border-warning/20' : 'bg-muted'}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <ClipboardList className={`h-4 w-4 ${pendingLeave.length > 0 ? 'text-warning' : 'text-muted-foreground'}`} />
+                  <span className="text-sm font-medium">Pending Leave</span>
+                </div>
+                <p className={`text-2xl font-bold ${pendingLeave.length > 0 ? 'text-warning' : ''}`}>{pendingLeave.length}</p>
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-sm text-muted-foreground">requests awaiting review</p>
+                  {pendingLeave.length > 0 && (
+                    <Link to="/leave" className="text-xs text-primary hover:underline">
+                      Review →
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
         </CardContent>
       </Card>
     </div>
