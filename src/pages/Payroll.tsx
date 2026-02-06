@@ -329,7 +329,7 @@ export default function Payroll() {
                 <TableRow>
                   <TableHead>Staff Member</TableHead>
                   <TableHead className="text-right">Total Hours</TableHead>
-                  <TableHead className="text-right">Overtime</TableHead>
+                  <TableHead className="text-right">OT Hours</TableHead>
                   <TableHead className="text-right">OT Pay</TableHead>
                   <TableHead className="text-right">Gross Pay</TableHead>
                   <TableHead className="text-right">PAYE Tax</TableHead>
