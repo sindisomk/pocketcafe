@@ -242,25 +242,25 @@ export default function Kiosk() {
       {isSleeping && <SleepOverlay onWake={resetSleepTimer} />}
       
       {/* Header */}
-       <header className="fixed top-0 left-0 right-0 z-50 bg-sidebar-background border-b border-sidebar-border px-6 py-4">
-         <div className="flex items-center justify-between">
-           <div className="flex items-center gap-3">
-             <div className="p-2 bg-primary rounded-lg">
-               <Coffee className="h-6 w-6 text-primary-foreground" />
+       <header className="fixed top-0 left-0 right-0 z-50 bg-sidebar-background border-b border-sidebar-border px-3 py-2 md:px-6 md:py-4">
+         <div className="flex items-center justify-between gap-2">
+           <div className="flex items-center gap-2 md:gap-3 min-w-0">
+             <div className="p-1.5 md:p-2 bg-primary rounded-lg shrink-0">
+               <Coffee className="h-4 w-4 md:h-6 md:w-6 text-primary-foreground" />
              </div>
-             <div>
-               <h1 className="text-xl font-bold">PocketCafe</h1>
-               <p className="text-sm text-sidebar-foreground/70">Kiosk Mode</p>
+             <div className="hidden sm:block">
+               <h1 className="text-lg md:text-xl font-bold">PocketCafe</h1>
+               <p className="text-xs md:text-sm text-sidebar-foreground/70">Kiosk Mode</p>
              </div>
            </div>
  
-           <div className="flex items-center gap-6">
+           <div className="flex items-center gap-2 md:gap-6">
              {/* Current time */}
              <div className="text-right">
-               <p className="text-3xl font-bold font-mono">
+               <p className="text-lg md:text-3xl font-bold font-mono">
                  {format(currentTime, 'HH:mm:ss')}
                </p>
-               <p className="text-sm text-sidebar-foreground/70">
+               <p className="hidden sm:block text-xs md:text-sm text-sidebar-foreground/70">
                  {format(currentTime, 'EEEE, MMMM d, yyyy')}
                </p>
              </div>
@@ -268,32 +268,32 @@ export default function Kiosk() {
              {/* Manager Override */}
              <Button
                variant="outline"
-               size="lg"
-               className="border-sidebar-border bg-sidebar-accent hover:bg-sidebar-accent/80"
+               size="sm"
+               className="border-sidebar-border bg-sidebar-accent hover:bg-sidebar-accent/80 md:size-lg"
                 onClick={handleManagerOverride}
              >
-               <KeyRound className="h-5 w-5 mr-2" />
-               Manager Override
+               <KeyRound className="h-4 w-4 md:h-5 md:w-5 md:mr-2" />
+               <span className="hidden md:inline">Manager Override</span>
              </Button>
 
               {/* Exit Kiosk */}
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                className="text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent h-8 w-8 md:h-10 md:w-10"
                 onClick={handleExitKiosk}
                 title="Exit Kiosk (requires PIN)"
               >
-                <LogOut className="h-5 w-5" />
+                <LogOut className="h-4 w-4 md:h-5 md:w-5" />
               </Button>
            </div>
          </div>
        </header>
  
-        {/* Main content */}
-        <main className="pt-24 h-screen flex">
-          {/* Left panel - Camera (60%) - only render when awake */}
-          <div className="w-[60%] p-6 pr-3">
+        {/* Main content - stacks vertically on mobile */}
+        <main className="pt-16 md:pt-24 min-h-screen flex flex-col md:flex-row">
+          {/* Camera panel - full width on mobile, 60% on desktop */}
+          <div className="w-full md:w-[60%] p-3 md:p-6 md:pr-3 h-[50vh] md:h-auto">
             <div className="h-full rounded-2xl overflow-hidden border border-sidebar-border">
               {!isSleeping && (
                 <CameraFeed 
@@ -314,8 +314,8 @@ export default function Kiosk() {
             </div>
           </div>
 
-          {/* Right panel - Roster (40%) */}
-          <div className="w-[40%] p-6 pl-3">
+          {/* Roster panel - full width on mobile, 40% on desktop */}
+          <div className="w-full md:w-[40%] p-3 md:p-6 md:pl-3 flex-1 md:flex-none">
             <TodayRoster />
           </div>
         </main>
