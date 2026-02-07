@@ -10,7 +10,8 @@ import {
   LogOut, 
   ExternalLink, 
   AlertTriangle,
-  CheckCircle 
+  CheckCircle,
+  Users
 } from 'lucide-react';
 import { useAttendance } from '@/hooks/useAttendance';
 import { useNoShows } from '@/hooks/useNoShows';
@@ -19,6 +20,9 @@ import { Link } from 'react-router-dom';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatLateMinutes } from '@/lib/attendance';
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { queryKeys } from '@/lib/queryKeys';
 import {
   Dialog,
   DialogContent,
@@ -35,6 +39,26 @@ export default function Attendance() {
   const [resolveDialogOpen, setResolveDialogOpen] = useState(false);
   const [selectedNoShow, setSelectedNoShow] = useState<string | null>(null);
   const [resolveNotes, setResolveNotes] = useState('');
+
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  // Fetch today's scheduled shifts to calculate expected staff
+  const { data: todayShifts = [] } = useQuery({
+    queryKey: queryKeys.shiftsToday(today),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('shifts')
+        .select('staff_id')
+        .eq('shift_date', today);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const totalExpected = todayShifts.length;
+  // Staff who have clocked in (any status) are "arrived"
+  const arrivedStaffIds = new Set(attendance.map(a => a.staff_id));
+  const awaitingCount = todayShifts.filter(s => !arrivedStaffIds.has(s.staff_id)).length;
 
   const clockedIn = attendance.filter(a => a.status === 'clocked_in').length;
   const onBreak = attendance.filter(a => a.status === 'on_break').length;
@@ -105,7 +129,21 @@ export default function Attendance() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Users className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{awaitingCount}<span className="text-sm font-normal text-muted-foreground">/{totalExpected}</span></p>
+                <p className="text-sm text-muted-foreground">Awaiting</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
