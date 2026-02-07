@@ -204,14 +204,16 @@ interface ClockInParams {
        if (error) throw error;
        return data;
      },
-     onSuccess: () => {
-       queryClient.invalidateQueries({ queryKey: queryKeys.attendance(dateStr) });
-       queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(dateStr) });
-       toast.success('Successfully clocked out!');
-     },
-     onError: (error) => {
-       toast.error(`Failed to clock out: ${error.message}`);
-     },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.attendance(dateStr) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(dateStr) });
+        // Refresh payroll data so completed shifts appear immediately
+        queryClient.invalidateQueries({ queryKey: ['payroll-attendance'] });
+        toast.success('Successfully clocked out!');
+      },
+      onError: (error) => {
+        toast.error(`Failed to clock out: ${error.message}`);
+      },
    });
  
    const getActiveRecord = (staffId: string) => {
