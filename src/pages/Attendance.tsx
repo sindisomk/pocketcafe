@@ -11,11 +11,13 @@ import {
   ExternalLink, 
   AlertTriangle,
   CheckCircle,
-  Users
+  Users,
+  History
 } from 'lucide-react';
 import { useAttendance } from '@/hooks/useAttendance';
+import { useAttendanceHistory } from '@/hooks/useAttendanceHistory';
 import { useNoShows } from '@/hooks/useNoShows';
-import { format, differenceInMinutes } from 'date-fns';
+import { format, differenceInMinutes, subDays } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatLateMinutes } from '@/lib/attendance';
@@ -23,6 +25,9 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { queryKeys } from '@/lib/queryKeys';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import AttendanceHistoryTable from '@/components/attendance/AttendanceHistoryTable';
 import {
   Dialog,
   DialogContent,
@@ -42,6 +47,11 @@ export default function Attendance() {
 
   const today = format(new Date(), 'yyyy-MM-dd');
 
+  // History date range (default: last 7 days)
+  const [historyStart, setHistoryStart] = useState(format(subDays(new Date(), 7), 'yyyy-MM-dd'));
+  const [historyEnd, setHistoryEnd] = useState(today);
+  const { data: historyRecords = [], isLoading: historyLoading } = useAttendanceHistory(historyStart, historyEnd);
+
   // Fetch today's scheduled shifts to calculate expected staff
   const { data: todayShifts = [] } = useQuery({
     queryKey: queryKeys.shiftsToday(today),
@@ -56,7 +66,6 @@ export default function Attendance() {
   });
 
   const totalExpected = todayShifts.length;
-  // Staff who have clocked in (any status) are "arrived"
   const arrivedStaffIds = new Set(attendance.map(a => a.staff_id));
   const awaitingCount = todayShifts.filter(s => !arrivedStaffIds.has(s.staff_id)).length;
 
@@ -265,84 +274,137 @@ export default function Attendance() {
         </Card>
       )}
 
-      {/* Today's Attendance */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Today's Attendance
-          </CardTitle>
-          <CardDescription>
-            {format(new Date(), 'EEEE, MMMM d, yyyy')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <Skeleton className="h-10 w-10 rounded-full" />
-                  <div className="flex-1">
-                    <Skeleton className="h-4 w-24 mb-1" />
-                    <Skeleton className="h-3 w-16" />
+      {/* Attendance Tabs: Today + History */}
+      <Tabs defaultValue="today">
+        <TabsList>
+          <TabsTrigger value="today">
+            <Clock className="h-4 w-4 mr-2" />
+            Today
+          </TabsTrigger>
+          <TabsTrigger value="history">
+            <History className="h-4 w-4 mr-2" />
+            History
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Today's Attendance */}
+        <TabsContent value="today">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Today's Attendance
+              </CardTitle>
+              <CardDescription>
+                {format(new Date(), 'EEEE, MMMM d, yyyy')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <Skeleton className="h-10 w-10 rounded-full" />
+                      <div className="flex-1">
+                        <Skeleton className="h-4 w-24 mb-1" />
+                        <Skeleton className="h-3 w-16" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : attendance.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Clock className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No attendance records for today</p>
+                  <p className="text-sm mt-1">Staff can clock in using the Kiosk</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {attendance.map((record) => (
+                    <div
+                      key={record.id}
+                      className="flex items-center gap-4 p-3 border rounded-lg"
+                    >
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={record.staff_profiles?.profile_photo_url ?? undefined} />
+                        <AvatarFallback>
+                          {record.staff_profiles?.name?.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{record.staff_profiles?.name}</p>
+                          {getStatusBadge(record.status, record.is_late, record.late_minutes)}
+                        </div>
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                          <span>In: {format(new Date(record.clock_in_time), 'h:mm a')}</span>
+                          {record.scheduled_start_time && (
+                            <span className="text-xs">(Scheduled: {record.scheduled_start_time.slice(0, 5)})</span>
+                          )}
+                          {record.clock_out_time && (
+                            <span>Out: {format(new Date(record.clock_out_time), 'h:mm a')}</span>
+                          )}
+                          {record.break_start_time && (
+                            <span className="flex items-center gap-1">
+                              <Coffee className="h-3 w-3" />
+                              Break taken
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="font-mono text-sm">
+                          {formatDuration(record.clock_in_time, record.clock_out_time)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">duration</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* History */}
+        <TabsContent value="history">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Attendance History
+              </CardTitle>
+              <CardDescription>
+                <div className="flex items-center gap-3 mt-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-medium">From</label>
+                    <Input
+                      type="date"
+                      value={historyStart}
+                      onChange={(e) => setHistoryStart(e.target.value)}
+                      className="w-auto h-8 text-sm"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-medium">To</label>
+                    <Input
+                      type="date"
+                      value={historyEnd}
+                      onChange={(e) => setHistoryEnd(e.target.value)}
+                      className="w-auto h-8 text-sm"
+                    />
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : attendance.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Clock className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>No attendance records for today</p>
-              <p className="text-sm mt-1">Staff can clock in using the Kiosk</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {attendance.map((record) => (
-                <div
-                  key={record.id}
-                  className="flex items-center gap-4 p-3 border rounded-lg"
-                >
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src={record.staff_profiles?.profile_photo_url ?? undefined} />
-                    <AvatarFallback>
-                      {record.staff_profiles?.name?.split(' ').map((n) => n[0]).join('').slice(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{record.staff_profiles?.name}</p>
-                      {getStatusBadge(record.status, record.is_late, record.late_minutes)}
-                    </div>
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                      <span>In: {format(new Date(record.clock_in_time), 'h:mm a')}</span>
-                      {record.scheduled_start_time && (
-                        <span className="text-xs">(Scheduled: {record.scheduled_start_time.slice(0, 5)})</span>
-                      )}
-                      {record.clock_out_time && (
-                        <span>Out: {format(new Date(record.clock_out_time), 'h:mm a')}</span>
-                      )}
-                      {record.break_start_time && (
-                        <span className="flex items-center gap-1">
-                          <Coffee className="h-3 w-3" />
-                          Break taken
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="font-mono text-sm">
-                      {formatDuration(record.clock_in_time, record.clock_out_time)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">duration</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AttendanceHistoryTable records={historyRecords} isLoading={historyLoading} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Resolve No-Show Dialog */}
       <Dialog open={resolveDialogOpen} onOpenChange={setResolveDialogOpen}>
