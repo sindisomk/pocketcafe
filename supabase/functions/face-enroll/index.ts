@@ -149,9 +149,10 @@ function validateImageData(imageBase64: string): { valid: boolean; error?: strin
      console.log(`[face-enroll] Detect response:`, JSON.stringify(detectData));
  
       if (detectData.error_message) {
-        throw new Error(`Face++ Detect API error: ${detectData.error_message}`);
-     }
- 
+        console.error(`[face-enroll] Face++ Detect API error: ${detectData.error_message}`);
+        throw new Error("Face detection failed. Please try again.");
+      }
+
      if (!detectData.faces || detectData.faces.length === 0) {
        return new Response(
          JSON.stringify({ success: false, error: "No face detected in the image" }),
@@ -203,7 +204,8 @@ function validateImageData(imageBase64: string): { valid: boolean; error?: strin
           faceSetExists = true;
           console.log(`[face-enroll] FaceSet already existed (race condition)`);
         } else {
-         throw new Error(`Failed to create FaceSet: ${JSON.stringify(createSetData)}`);
+          console.error(`[face-enroll] Failed to create FaceSet: ${JSON.stringify(createSetData)}`);
+          throw new Error("Face registration service unavailable. Please try again.");
        }
      }
  
@@ -222,9 +224,10 @@ function validateImageData(imageBase64: string): { valid: boolean; error?: strin
      console.log(`[face-enroll] Add face response:`, JSON.stringify(addFaceData));
  
       if (addFaceData.error_message) {
-       throw new Error(`Failed to add face to FaceSet: ${JSON.stringify(addFaceData)}`);
-     }
- 
+        console.error(`[face-enroll] Failed to add face to FaceSet: ${JSON.stringify(addFaceData)}`);
+        throw new Error("Failed to register face. Please try again.");
+      }
+
      // Step 4: Store face_token in staff_profiles
      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
  
@@ -233,11 +236,11 @@ function validateImageData(imageBase64: string): { valid: boolean; error?: strin
        .update({ face_token: faceToken })
        .eq("id", staffId);
  
-     if (updateError) {
-       console.error(`[face-enroll] Database update error:`, updateError);
-       throw new Error(`Failed to update staff profile: ${updateError.message}`);
-     }
- 
+      if (updateError) {
+        console.error(`[face-enroll] Database update error:`, updateError);
+        throw new Error("Failed to save enrollment. Please try again.");
+      }
+
      console.log(`[face-enroll] Successfully enrolled face for staff: ${staffId}`);
  
      return new Response(
@@ -249,12 +252,12 @@ function validateImageData(imageBase64: string): { valid: boolean; error?: strin
        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
      );
  
-   } catch (error) {
-     console.error("[face-enroll] Error:", error);
-     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-     return new Response(
-       JSON.stringify({ success: false, error: errorMessage }),
-       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-     );
+    } catch (error) {
+      console.error("[face-enroll] Error:", error);
+      // Return generic error to client; detailed error stays in server logs only
+      return new Response(
+        JSON.stringify({ success: false, error: "Face enrollment failed. Please try again or contact support." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
    }
  });
