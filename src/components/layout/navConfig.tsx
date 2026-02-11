@@ -12,6 +12,6 @@ export const ALL_NAV_ITEMS = [
 ] as const;
 
 export function getNavItemsForRole(isAdmin: boolean, isManager: boolean) {
-  const role = isAdmin ? 'admin' : isManager ? 'manager' : 'staff';
-  return ALL_NAV_ITEMS.filter((item) => item.roles.includes(role));
+  const role: 'admin' | 'manager' | 'staff' = isAdmin ? 'admin' : isManager ? 'manager' : 'staff';
+  return ALL_NAV_ITEMS.filter((item) => (item.roles as readonly string[]).includes(role));
 }
