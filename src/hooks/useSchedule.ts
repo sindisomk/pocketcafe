@@ -129,12 +129,15 @@ export function useSchedule(weekStartDate: Date) {
       return data;
     },
     onSuccess: async () => {
-      // Revert schedule to draft so user can republish
       if (scheduleQuery.data?.id && scheduleQuery.data.status === 'published') {
-        await supabase
-          .from('weekly_schedules')
-          .update({ status: 'draft', published_at: null })
-          .eq('id', scheduleQuery.data.id);
+        try {
+          await supabase
+            .from('weekly_schedules')
+            .update({ status: 'draft', published_at: null })
+            .eq('id', scheduleQuery.data.id);
+        } catch {
+          // Non-fatal: shift was added; draft revert failed
+        }
         queryClient.invalidateQueries({ queryKey: queryKeys.weeklySchedule(weekStart) });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.shifts(weekStart) });
@@ -160,12 +163,15 @@ export function useSchedule(weekStartDate: Date) {
       if (error) throw error;
     },
     onSuccess: async () => {
-      // Revert schedule to draft so user can republish
       if (scheduleQuery.data?.id && scheduleQuery.data.status === 'published') {
-        await supabase
-          .from('weekly_schedules')
-          .update({ status: 'draft', published_at: null })
-          .eq('id', scheduleQuery.data.id);
+        try {
+          await supabase
+            .from('weekly_schedules')
+            .update({ status: 'draft', published_at: null })
+            .eq('id', scheduleQuery.data.id);
+        } catch {
+          // Non-fatal: shift was removed; draft revert failed
+        }
         queryClient.invalidateQueries({ queryKey: queryKeys.weeklySchedule(weekStart) });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.shifts(weekStart) });

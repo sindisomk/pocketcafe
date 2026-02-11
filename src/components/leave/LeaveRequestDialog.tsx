@@ -1,6 +1,6 @@
- import { useState } from 'react';
- import { format } from 'date-fns';
- import { CalendarIcon, Loader2, AlertTriangle } from 'lucide-react';
+ import { useState, useEffect } from 'react';
+ import { format, parse } from 'date-fns';
+ import { CalendarIcon, Loader2, AlertTriangle, Clock } from 'lucide-react';
  import {
    Dialog,
    DialogContent,
@@ -11,21 +11,53 @@
  } from '@/components/ui/dialog';
  import { Button } from '@/components/ui/button';
  import { Label } from '@/components/ui/label';
+ import { Input } from '@/components/ui/input';
  import { Textarea } from '@/components/ui/textarea';
  import { Calendar } from '@/components/ui/calendar';
  import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
  import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
  import { useLeaveRequests } from '@/hooks/useLeaveRequests';
  import { useStaff } from '@/hooks/useStaff';
  import { useAuth } from '@/hooks/useAuth';
  import { cn } from '@/lib/utils';
  
+ /** Minimal shape for edit prefill */
+ export type LeaveRequestEdit = {
+   id: string;
+   staff_id: string;
+   start_date: string;
+   end_date: string;
+   start_time: string | null;
+   end_time: string | null;
+   leave_type: string | null;
+   reason: string | null;
+ };
+
  interface LeaveRequestDialogProps {
    open: boolean;
    onOpenChange: (open: boolean) => void;
+   /** When set, dialog is in edit mode: prefill and call onUpdate on submit */
+   editRequest?: LeaveRequestEdit | null;
+   /** When true, submit is in progress (e.g. parent saving edit) */
+   isUpdating?: boolean;
+   onUpdate?: (id: string, payload: {
+     startDate: string;
+     endDate: string;
+     startTime: string | null;
+     endTime: string | null;
+     leaveType: string | null;
+     reason: string | null;
+   }) => void | Promise<void>;
  }
- 
- export function LeaveRequestDialog({ open, onOpenChange }: LeaveRequestDialogProps) {
+
+ function toHHmm(t: string | null | undefined): string {
+   if (t == null || t === '') return '09:00';
+   const s = t.trim();
+   return s.length >= 5 ? s.slice(0, 5) : s;
+ }
+
+ export function LeaveRequestDialog({ open, onOpenChange, editRequest, isUpdating, onUpdate }: LeaveRequestDialogProps) {
    const { createLeaveRequest, getConflicts } = useLeaveRequests();
    const { staff } = useStaff();
    const { isAdmin, isManager } = useAuth();
@@ -34,7 +66,33 @@
    const [startDate, setStartDate] = useState<Date>();
    const [endDate, setEndDate] = useState<Date>();
    const [leaveType, setLeaveType] = useState<string>('');
+   const [fullDay, setFullDay] = useState<boolean>(true);
+   const [startTime, setStartTime] = useState<string>('09:00');
+   const [endTime, setEndTime] = useState<string>('17:00');
    const [reason, setReason] = useState('');
+
+   useEffect(() => {
+     if (open && editRequest) {
+       setSelectedStaff(editRequest.staff_id);
+       setStartDate(parse(editRequest.start_date, 'yyyy-MM-dd', new Date()));
+       setEndDate(parse(editRequest.end_date, 'yyyy-MM-dd', new Date()));
+       setLeaveType(editRequest.leave_type ?? '');
+       const hasPartial = !!(editRequest.start_time && editRequest.end_time);
+       setFullDay(!hasPartial);
+       setStartTime(toHHmm(editRequest.start_time) || '09:00');
+       setEndTime(toHHmm(editRequest.end_time) || '17:00');
+       setReason(editRequest.reason ?? '');
+     } else if (open && !editRequest) {
+       setSelectedStaff('');
+       setStartDate(undefined);
+       setEndDate(undefined);
+       setLeaveType('');
+       setFullDay(true);
+       setStartTime('09:00');
+       setEndTime('17:00');
+       setReason('');
+     }
+   }, [open, editRequest]);
  
    const conflicts = startDate && endDate
      ? getConflicts(format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd'))
@@ -43,38 +101,60 @@
    const handleSubmit = async () => {
      if (!selectedStaff || !startDate || !endDate) return;
  
-    await createLeaveRequest.mutateAsync({
-       staffId: selectedStaff,
+     const payload = {
        startDate: format(startDate, 'yyyy-MM-dd'),
        endDate: format(endDate, 'yyyy-MM-dd'),
-       leaveType: leaveType || undefined,
-       reason: reason || undefined,
+       startTime: fullDay ? null : startTime,
+       endTime: fullDay ? null : endTime,
+       leaveType: leaveType || null,
+       reason: reason || null,
+     };
+
+     if (editRequest && onUpdate) {
+       await onUpdate(editRequest.id, payload);
+       onOpenChange(false);
+       return;
+     }
+
+     await createLeaveRequest.mutateAsync({
+       staffId: selectedStaff,
+       ...payload,
+       leaveType: payload.leaveType ?? undefined,
+       reason: payload.reason ?? undefined,
      });
 
-     // Reset form
      setSelectedStaff('');
      setStartDate(undefined);
      setEndDate(undefined);
      setLeaveType('');
+     setFullDay(true);
+     setStartTime('09:00');
+     setEndTime('17:00');
      setReason('');
      onOpenChange(false);
    };
  
-   const isValid = selectedStaff && startDate && endDate && endDate >= startDate;
+   const partialTimeValid = fullDay || (startTime < endTime);
+   const isValid =
+     selectedStaff &&
+     startDate &&
+     endDate &&
+     endDate >= startDate &&
+     partialTimeValid;
  
    return (
      <Dialog open={open} onOpenChange={onOpenChange}>
        <DialogContent className="sm:max-w-md">
          <DialogHeader>
-           <DialogTitle>New Leave Request</DialogTitle>
+           <DialogTitle>{editRequest ? 'Edit Leave' : 'New Leave Request'}</DialogTitle>
            <DialogDescription>
-             Submit a leave request for review
+             {editRequest ? 'Update dates, times, type or reason.' : 'Submit a leave request for review'}
            </DialogDescription>
          </DialogHeader>
  
          <div className="space-y-4">
-           {/* Staff selector (only for admins/managers) */}
-           {(isAdmin || isManager) && (
+           {/* Staff selector (only for admins/managers, hidden in edit mode) */}
+           {(isAdmin || isManager) && !editRequest && (
              <div className="space-y-2">
                <Label>Staff Member</Label>
                <Select value={selectedStaff} onValueChange={setSelectedStaff}>
@@ -111,6 +191,62 @@
              </Select>
            </div>
 
+           {/* Full day vs partial (hours) */}
+           <div className="space-y-3">
+             <Label>Duration</Label>
+             <RadioGroup
+               value={fullDay ? 'full' : 'partial'}
+               onValueChange={(v) => setFullDay(v === 'full')}
+               className="flex flex-col gap-2"
+             >
+               <div className="flex items-center space-x-2">
+                 <RadioGroupItem value="full" id="full" />
+                 <Label htmlFor="full" className="font-normal cursor-pointer">
+                   Full day(s)
+                 </Label>
+               </div>
+               <div className="flex items-center space-x-2">
+                 <RadioGroupItem value="partial" id="partial" />
+                 <Label htmlFor="partial" className="font-normal cursor-pointer">
+                   Partial day – specify hours (applies to each day in range)
+                 </Label>
+               </div>
+             </RadioGroup>
+             {!fullDay && (
+               <div className="grid grid-cols-2 gap-4 pl-6 pt-2">
+                 <div className="space-y-2">
+                   <Label htmlFor="startTime" className="text-xs flex items-center gap-1">
+                     <Clock className="h-3 w-3" />
+                     Start time
+                   </Label>
+                   <Input
+                     id="startTime"
+                     type="time"
+                     value={startTime}
+                     onChange={(e) => setStartTime(e.target.value)}
+                   />
+                 </div>
+                 <div className="space-y-2">
+                   <Label htmlFor="endTime" className="text-xs flex items-center gap-1">
+                     <Clock className="h-3 w-3" />
+                     End time
+                   </Label>
+                   <Input
+                     id="endTime"
+                     type="time"
+                     value={endTime}
+                     onChange={(e) => setEndTime(e.target.value)}
+                   />
+                 </div>
+                 {startTime >= endTime && (
+                   <p className="col-span-2 text-xs text-destructive">
+                     End time must be after start time
+                   </p>
+                 )}
+               </div>
+             )}
+           </div>
+
            {/* Date range */}
            <div className="grid grid-cols-2 gap-4">
              <div className="space-y-2">
@@ -134,7 +270,7 @@
                      selected={startDate}
                      onSelect={setStartDate}
                      initialFocus
-                     disabled={(date) => date < new Date()}
+                     disabled={(date) => !editRequest && date < new Date()}
                    />
                  </PopoverContent>
                </Popover>
@@ -199,13 +335,15 @@
            </Button>
            <Button 
              onClick={handleSubmit} 
-             disabled={!isValid || createLeaveRequest.isPending}
+             disabled={!isValid || (createLeaveRequest.isPending && !editRequest) || isUpdating}
            >
-             {createLeaveRequest.isPending ? (
+             {(createLeaveRequest.isPending && !editRequest) || isUpdating ? (
                <>
                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                 Submitting...
+                 {editRequest ? 'Saving...' : 'Submitting...'}
                </>
+             ) : editRequest ? (
+               'Save changes'
              ) : (
                'Submit Request'
              )}

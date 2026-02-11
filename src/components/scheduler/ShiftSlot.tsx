@@ -1,4 +1,5 @@
 import { forwardRef } from 'react';
+import { format } from 'date-fns';
 import { useDroppable } from '@dnd-kit/core';
 import { X, AlertTriangle } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -13,6 +14,8 @@ interface ShiftSlotProps {
   hasRestWarning: (staffId: string) => boolean;
   onRemoveShift: (shiftId: string) => void;
   isLoading?: boolean;
+  /** Set of shift IDs that are no-shows (for highlighting) */
+  noShowShiftIds?: Set<string>;
 }
 
 export const ShiftSlot = forwardRef<HTMLDivElement, ShiftSlotProps>(function ShiftSlot(
@@ -23,11 +26,13 @@ export const ShiftSlot = forwardRef<HTMLDivElement, ShiftSlotProps>(function Shi
     hasRestWarning,
     onRemoveShift,
     isLoading,
+    noShowShiftIds,
   },
   externalRef
 ) {
-  const slotId = `${date.toISOString()}-${shiftType}`;
-  
+  // Use calendar date (yyyy-MM-dd) so drop targets are stable and today works in any timezone
+  const slotId = `${format(date, 'yyyy-MM-dd')}-${shiftType}`;
+
   const { setNodeRef, isOver } = useDroppable({
     id: slotId,
     data: { date, shiftType },
@@ -71,6 +76,7 @@ export const ShiftSlot = forwardRef<HTMLDivElement, ShiftSlotProps>(function Shi
 
       {shifts.map((shift) => {
         const showWarning = hasRestWarning(shift.staff_id);
+        const isNoShow = noShowShiftIds?.has(shift.id) ?? false;
         const initials = shift.staff_profiles.name
           .split(' ')
           .map((n) => n[0])
@@ -83,12 +89,19 @@ export const ShiftSlot = forwardRef<HTMLDivElement, ShiftSlotProps>(function Shi
             key={shift.id}
             className={cn(
               'group relative p-2 rounded-md bg-card border transition-all',
-              showWarning && 'border-warning ring-1 ring-warning/50'
+              showWarning && !isNoShow && 'border-warning ring-1 ring-warning/50',
+              isNoShow && 'border-destructive bg-destructive/10 ring-1 ring-destructive/50'
             )}
           >
-            {showWarning && (
+            {showWarning && !isNoShow && (
               <div className="absolute -top-2 -right-2 bg-warning text-warning-foreground rounded-full p-0.5">
                 <AlertTriangle className="h-3 w-3" />
+              </div>
+            )}
+            {isNoShow && (
+              <div className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded px-1.5 py-0.5 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                <span className="text-[10px] font-medium">No-show</span>
               </div>
             )}
 

@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { devLog } from '@/lib/logger';
 
 export type NotificationType = 
   | 'late_arrival' 
@@ -122,7 +123,7 @@ export async function notifyManagers(
     }
 
     if (!managers || managers.length === 0) {
-      console.log('[Notifications] No managers found to notify');
+      devLog('[Notifications] No managers found to notify');
       return;
     }
 
@@ -143,7 +144,7 @@ export async function notifyManagers(
     if (insertError) {
       console.error('[Notifications] Failed to create notifications:', insertError);
     } else {
-      console.log(`[Notifications] Created ${notifications.length} notifications for type: ${type}`);
+      devLog('[Notifications] Created', notifications.length, 'notifications for type:', type);
     }
   } catch (error) {
     console.error('[Notifications] Unexpected error:', error);

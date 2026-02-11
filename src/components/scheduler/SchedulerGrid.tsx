@@ -5,6 +5,7 @@ import {
   DragOverlay,
   DragStartEvent,
   PointerSensor,
+  pointerWithin,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -19,9 +20,29 @@ import { DraggableStaffCard } from './DraggableStaffCard';
 import { DayColumn } from './DayColumn';
 import { useSchedule } from '@/hooks/useSchedule';
 import { useStaff } from '@/hooks/useStaff';
+import { useLeaveRequests } from '@/hooks/useLeaveRequests';
+import { useNoShowsForDates } from '@/hooks/useNoShows';
 import { StaffProfile } from '@/types/staff';
 import { ShiftWithStaff, SHIFT_TIMES, getEveningEndTime } from '@/types/schedule';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+/** Normalise time string to HH:mm for comparison (handles "09:00" or "09:00:00") */
+function toHHmm(t: string | null | undefined): string | null {
+  if (t == null || t === '') return null;
+  const s = t.trim();
+  return s.length >= 5 ? s.slice(0, 5) : s;
+}
+
+/** True if two time ranges overlap (both in HH:mm). */
+function timeRangesOverlap(
+  aStart: string,
+  aEnd: string,
+  bStart: string,
+  bEnd: string
+): boolean {
+  return aStart < bEnd && aEnd > bStart;
+}
 
 export function SchedulerGrid() {
   const [currentWeekStart, setCurrentWeekStart] = useState(() =>
@@ -30,6 +51,7 @@ export function SchedulerGrid() {
   const [activeStaff, setActiveStaff] = useState<StaffProfile | null>(null);
 
   const { staff, isLoading: staffLoading } = useStaff();
+  const { leaveRequests } = useLeaveRequests();
   const { 
     schedule, 
     shifts, 
@@ -51,6 +73,74 @@ export function SchedulerGrid() {
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
   }, [currentWeekStart]);
+
+  const weekDateStrs = useMemo(
+    () => weekDays.map((d) => format(d, 'yyyy-MM-dd')),
+    [weekDays]
+  );
+
+  const { noShowShiftIds } = useNoShowsForDates(weekDateStrs);
+
+  // Approved leave: staffId -> list of date strings (yyyy-MM-dd) when they're on leave this week
+  const staffLeaveDatesInWeek = useMemo(() => {
+    const map = new Map<string, string[]>();
+    const approved = (leaveRequests ?? []).filter((r) => r.status === 'approved');
+    const weekSet = new Set(weekDateStrs);
+    for (const req of approved) {
+      const start = parseISO(req.start_date);
+      const end = parseISO(req.end_date);
+      const dates: string[] = [];
+      for (let i = 0; ; i++) {
+        const d = addDays(start, i);
+        if (d > end) break;
+        const dateStr = format(d, 'yyyy-MM-dd');
+        if (weekSet.has(dateStr)) dates.push(dateStr);
+      }
+      if (dates.length) {
+        const existing = map.get(req.staff_id) ?? [];
+        map.set(req.staff_id, [...new Set([...existing, ...dates])].sort());
+      }
+    }
+    return map;
+  }, [leaveRequests, weekDateStrs]);
+
+  const isStaffOnLeaveOnDate = useCallback(
+    (staffId: string, dateStr: string) => staffLeaveDatesInWeek.get(staffId)?.includes(dateStr) ?? false,
+    [staffLeaveDatesInWeek]
+  );
+
+  /** True if staff has approved leave that overlaps the given shift time on the given date. */
+  const isStaffOnLeaveDuringShift = useCallback(
+    (staffId: string, dateStr: string, shiftStart: string, shiftEnd: string) => {
+      const approved = (leaveRequests ?? []).filter(
+        (r) => r.status === 'approved' && r.staff_id === staffId && r.start_date <= dateStr && r.end_date >= dateStr
+      );
+      const shiftStartN = toHHmm(shiftStart) ?? shiftStart;
+      const shiftEndN = toHHmm(shiftEnd) ?? shiftEnd;
+      for (const req of approved) {
+        const leaveStart = toHHmm(req.start_time);
+        const leaveEnd = toHHmm(req.end_time);
+        if (leaveStart == null && leaveEnd == null) return true; // full day
+        if (leaveStart != null && leaveEnd != null && timeRangesOverlap(leaveStart, leaveEnd, shiftStartN, shiftEndN))
+          return true;
+      }
+      return false;
+    },
+    [leaveRequests]
+  );
+
+  // Count how many staff are on leave per day (for day column hint)
+  const onLeaveCountByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const dateStr of weekDateStrs) {
+      let count = 0;
+      for (const [, dates] of staffLeaveDatesInWeek) {
+        if (dates.includes(dateStr)) count++;
+      }
+      map.set(dateStr, count);
+    }
+    return map;
+  }, [weekDateStrs, staffLeaveDatesInWeek]);
 
   // Check for rest period violations (<11 hours between shifts)
   const hasRestWarning = useCallback((staffId: string): boolean => {
@@ -103,6 +193,19 @@ export function SchedulerGrid() {
     const slotData = over.data.current as { date: Date; shiftType: 'morning' | 'evening' } | undefined;
 
     if (staffData && slotData) {
+      const dateStr = format(slotData.date, 'yyyy-MM-dd');
+      const shiftEnd =
+        slotData.shiftType === 'evening'
+          ? getEveningEndTime(slotData.date)
+          : SHIFT_TIMES.morning.end;
+      const shiftStart =
+        slotData.shiftType === 'morning'
+          ? SHIFT_TIMES.morning.start
+          : SHIFT_TIMES.evening.start;
+      if (isStaffOnLeaveDuringShift(staffData.id, dateStr, shiftStart, shiftEnd)) {
+        toast.error(`${staffData.name} is on leave during this shift (${format(slotData.date, 'EEE d MMM')}) and cannot be assigned`);
+        return;
+      }
       addShift.mutate({
         staffId: staffData.id,
         shiftDate: slotData.date,
@@ -131,6 +234,7 @@ export function SchedulerGrid() {
   return (
     <DndContext
       sensors={sensors}
+      collisionDetection={pointerWithin}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
@@ -156,7 +260,12 @@ export function SchedulerGrid() {
                   </p>
                 ) : (
                   staff.map((s) => (
-                    <DraggableStaffCard key={s.id} staff={s} />
+                    <DraggableStaffCard
+                      key={s.id}
+                      staff={s}
+                      leaveDaysInWeek={staffLeaveDatesInWeek.get(s.id) ?? []}
+                      weekDays={weekDays}
+                    />
                   ))
                 )}
               </div>
@@ -235,6 +344,8 @@ export function SchedulerGrid() {
                       hasRestWarning={hasRestWarning}
                       onRemoveShift={handleRemoveShift}
                       isLoading={removeShift.isPending}
+                      onLeaveCount={onLeaveCountByDate.get(dayStr) ?? 0}
+                      noShowShiftIds={noShowShiftIds}
                     />
                   );
                 })}
@@ -249,7 +360,11 @@ export function SchedulerGrid() {
       <DragOverlay>
         {activeStaff ? (
           <div className="opacity-80">
-            <DraggableStaffCard staff={activeStaff} />
+            <DraggableStaffCard
+              staff={activeStaff}
+              leaveDaysInWeek={staffLeaveDatesInWeek.get(activeStaff.id) ?? []}
+              weekDays={weekDays}
+            />
           </div>
         ) : null}
       </DragOverlay>

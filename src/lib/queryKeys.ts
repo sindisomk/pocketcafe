@@ -31,6 +31,7 @@ export const queryKeys = {
 
   // No-shows, history, kiosk
   noShows: (date: string) => ['no-shows', date] as const,
+  noShowsForDates: (dateStrings: string[]) => ['no-shows', 'range', ...dateStrings] as const,
   attendanceHistory: (start: string, end: string) => ['attendance-history', start, end] as const,
   leaveBalancesAll: ['leave-balances', 'all'] as const,
   kioskStaff: ['kiosk-staff'] as const,

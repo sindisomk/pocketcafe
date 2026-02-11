@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { isNoShow, getNowUK } from '@/lib/attendance';
 import { getTodayUK } from '@/lib/datetime';
 import { notifyManagers } from '@/hooks/useNotifications';
+import { devLog } from '@/lib/logger';
 
 const NO_SHOW_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
@@ -86,7 +87,7 @@ export function useNoShowDetection(options: UseNoShowDetectionOptions = {}) {
             if (insertError) {
               console.error('[NoShowDetection] Failed to create no-show record:', insertError);
             } else {
-              console.log('[NoShowDetection] Created no-show record for shift:', shift.id);
+              devLog('[NoShowDetection] Created no-show record for shift:', shift.id);
               
               // Get staff name for notification
               const { data: staffData } = await supabase

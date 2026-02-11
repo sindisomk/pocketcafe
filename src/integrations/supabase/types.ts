@@ -185,7 +185,9 @@ export type Database = {
       leave_requests: {
         Row: {
           created_at: string
+          deducted_at: string | null
           end_date: string
+          end_time: string | null
           id: string
           leave_type: string | null
           reason: string | null
@@ -194,12 +196,15 @@ export type Database = {
           reviewed_by: string | null
           staff_id: string
           start_date: string
+          start_time: string | null
           status: Database["public"]["Enums"]["leave_status"]
           updated_at: string
         }
         Insert: {
           created_at?: string
+          deducted_at?: string | null
           end_date: string
+          end_time?: string | null
           id?: string
           leave_type?: string | null
           reason?: string | null
@@ -208,12 +213,15 @@ export type Database = {
           reviewed_by?: string | null
           staff_id: string
           start_date: string
+          start_time?: string | null
           status?: Database["public"]["Enums"]["leave_status"]
           updated_at?: string
         }
         Update: {
           created_at?: string
+          deducted_at?: string | null
           end_date?: string
+          end_time?: string | null
           id?: string
           leave_type?: string | null
           reason?: string | null
@@ -222,6 +230,7 @@ export type Database = {
           reviewed_by?: string | null
           staff_id?: string
           start_date?: string
+          start_time?: string | null
           status?: Database["public"]["Enums"]["leave_status"]
           updated_at?: string
         }
@@ -675,7 +684,7 @@ export type Database = {
         | "assistant_manager"
         | "shift_supervisor"
         | "floor_manager"
-      leave_status: "pending" | "approved" | "rejected"
+      leave_status: "pending" | "approved" | "rejected" | "cancelled"
       schedule_status: "draft" | "published"
       shift_type: "morning" | "evening"
       staff_role: "kitchen" | "floor" | "management" | "bar"
@@ -829,7 +838,7 @@ export const Constants = {
         "shift_supervisor",
         "floor_manager",
       ],
-      leave_status: ["pending", "approved", "rejected"],
+      leave_status: ["pending", "approved", "rejected", "cancelled"],
       schedule_status: ["draft", "published"],
       shift_type: ["morning", "evening"],
       staff_role: ["kitchen", "floor", "management", "bar"],

@@ -133,6 +133,126 @@ export function useLeaveBalance(staffId?: string) {
   };
 }
 
+/**
+ * Deduct leave hours for any staff (e.g. when leave is approved).
+ * Optionally set deducted_at on the leave request so History shows "Applied to balance".
+ */
+export function useDeductLeaveForStaff() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      staffId,
+      hours,
+      leaveRequestId,
+      adjustOnly,
+    }: {
+      staffId: string;
+      hours: number;
+      leaveRequestId?: string;
+      /** When true, only update balance (for edit flow); do not check or set deducted_at */
+      adjustOnly?: boolean;
+    }) => {
+      // Ensure each leave request is only deducted once (unless adjustOnly)
+      if (leaveRequestId && !adjustOnly) {
+        const { data: leaveReq, error: leaveErr } = await supabase
+          .from('leave_requests')
+          .select('deducted_at')
+          .eq('id', leaveRequestId)
+          .single();
+        if (leaveErr) throw leaveErr;
+        if (leaveReq?.deducted_at) {
+          throw new Error('This leave has already been deducted from balance.');
+        }
+      }
+
+      const year = new Date().getFullYear();
+      const { data: existing, error: fetchError } = await supabase
+        .from('leave_balances')
+        .select('id, used_hours')
+        .eq('staff_id', staffId)
+        .eq('year', year)
+        .maybeSingle();
+
+      if (fetchError) throw fetchError;
+      if (!existing) {
+        throw new Error('No leave balance record for this staff. Set up their balance first.');
+      }
+
+      const newUsed = (existing.used_hours ?? 0) + hours;
+      const { data, error } = await supabase
+        .from('leave_balances')
+        .update({ used_hours: newUsed })
+        .eq('id', existing.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (leaveRequestId && !adjustOnly) {
+        await supabase
+          .from('leave_requests')
+          .update({ deducted_at: new Date().toISOString() })
+          .eq('id', leaveRequestId);
+      }
+      return data;
+    },
+    onSuccess: (_, { staffId, leaveRequestId, adjustOnly }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leaveBalance(staffId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.leaveBalancesAll });
+      if (leaveRequestId && !adjustOnly) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.leaveRequests });
+      }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : `Failed to deduct leave: ${String(error)}`);
+    },
+  });
+}
+
+/**
+ * Credit leave hours back to a staff balance (e.g. when cancelling approved leave that was deducted).
+ */
+export function useCreditLeaveForStaff() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ staffId, hours }: { staffId: string; hours: number }) => {
+      const year = new Date().getFullYear();
+      const { data: existing, error: fetchError } = await supabase
+        .from('leave_balances')
+        .select('id, used_hours')
+        .eq('staff_id', staffId)
+        .eq('year', year)
+        .maybeSingle();
+
+      if (fetchError) throw fetchError;
+      if (!existing) {
+        throw new Error('No leave balance record for this staff.');
+      }
+
+      const currentUsed = existing.used_hours ?? 0;
+      const newUsed = Math.max(0, currentUsed - hours);
+      const { data, error } = await supabase
+        .from('leave_balances')
+        .update({ used_hours: newUsed })
+        .eq('id', existing.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, { staffId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leaveBalance(staffId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.leaveBalancesAll });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : `Failed to credit leave: ${String(error)}`);
+    },
+  });
+}
+
 // Hook to get all staff leave balances (for managers)
 export function useAllLeaveBalances() {
   return useQuery({

@@ -1,5 +1,5 @@
  export type AttendanceStatus = 'clocked_in' | 'on_break' | 'clocked_out';
- export type LeaveStatus = 'pending' | 'approved' | 'rejected';
+ export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
  
 export interface AttendanceRecord {
   id: string;
@@ -35,14 +35,20 @@ export interface AttendanceRecord {
    staff_id: string;
    start_date: string;
    end_date: string;
+   /** When set, leave is partial-day (e.g. "09:00", "13:00"). Null = full day. */
+   start_time: string | null;
+   /** When set, leave is partial-day. Null = full day. */
+   end_time: string | null;
    leave_type: string | null;
    reason: string | null;
    status: LeaveStatus;
-   reviewed_by: string | null;
-   reviewed_at: string | null;
-   review_notes: string | null;
-   created_at: string;
-   updated_at: string;
+  /** Set when leave hours have been applied to the staff leave balance */
+  deducted_at: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  created_at: string;
+  updated_at: string;
  }
  
  export interface LeaveRequestWithStaff extends LeaveRequest {

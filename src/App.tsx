@@ -9,6 +9,7 @@ import { RealtimeProvider } from "@/providers/RealtimeProvider";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
 import { RouteFallback } from "@/components/ui/loading-states";
 import { ErrorBoundary } from "./components/system/ErrorBoundary";
+import { devLog } from "@/lib/logger";
 
 // Eager-load entry points (small, critical path)
 import Login from "./pages/Login";
@@ -50,7 +51,7 @@ const queryClient = new QueryClient({
 const App = () => {
   // Global error handlers to catch unhandled rejections and errors
   useEffect(() => {
-    console.log("[App] Booted", { buildVersion: BUILD_VERSION });
+    devLog("[App] Booted", { buildVersion: BUILD_VERSION });
 
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       console.error("[App] Unhandled Promise Rejection:", {

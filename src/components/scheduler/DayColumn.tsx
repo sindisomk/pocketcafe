@@ -1,4 +1,5 @@
 import { format } from 'date-fns';
+import { CalendarOff } from 'lucide-react';
 import { ShiftSlot } from './ShiftSlot';
 import { ShiftWithStaff, SHIFT_TIMES, getEveningEndTime, getEveningHours } from '@/types/schedule';
 import { cn } from '@/lib/utils';
@@ -10,6 +11,10 @@ interface DayColumnProps {
   hasRestWarning: (staffId: string) => boolean;
   onRemoveShift: (shiftId: string) => void;
   isLoading?: boolean;
+  /** Number of staff on approved leave this day */
+  onLeaveCount?: number;
+  /** Set of shift IDs that are no-shows (for highlighting) */
+  noShowShiftIds?: Set<string>;
 }
 
 export function DayColumn({
@@ -18,6 +23,8 @@ export function DayColumn({
   hasRestWarning,
   onRemoveShift,
   isLoading,
+  onLeaveCount = 0,
+  noShowShiftIds,
 }: DayColumnProps) {
   const dayName = format(date, 'EEE');
   const dayNumber = format(date, 'd');
@@ -63,6 +70,12 @@ export function DayColumn({
           {dayNumber}
         </p>
         <p className="text-xs text-muted-foreground">{monthName}</p>
+        {onLeaveCount > 0 && (
+          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 flex items-center justify-center gap-1">
+            <CalendarOff className="h-3 w-3" />
+            {onLeaveCount} on leave
+          </p>
+        )}
       </div>
 
       {/* Daily Cost Header */}
@@ -88,6 +101,7 @@ export function DayColumn({
           hasRestWarning={hasRestWarning}
           onRemoveShift={onRemoveShift}
           isLoading={isLoading}
+          noShowShiftIds={noShowShiftIds}
         />
       </div>
 
@@ -106,6 +120,7 @@ export function DayColumn({
           hasRestWarning={hasRestWarning}
           onRemoveShift={onRemoveShift}
           isLoading={isLoading}
+          noShowShiftIds={noShowShiftIds}
         />
       </div>
     </div>

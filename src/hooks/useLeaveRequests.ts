@@ -33,6 +33,10 @@ import { notifyManagers } from '@/hooks/useNotifications';
        staffId: string;
        startDate: string;
        endDate: string;
+       /** Partial-day: start time "HH:mm". Omit or null for full day. */
+       startTime?: string | null;
+       /** Partial-day: end time "HH:mm". Omit or null for full day. */
+       endTime?: string | null;
        leaveType?: string;
        reason?: string;
      }) => {
@@ -42,6 +46,8 @@ import { notifyManagers } from '@/hooks/useNotifications';
            staff_id: request.staffId,
            start_date: request.startDate,
            end_date: request.endDate,
+           start_time: request.startTime ?? null,
+           end_time: request.endTime ?? null,
            leave_type: request.leaveType || null,
            reason: request.reason,
          })
@@ -79,6 +85,50 @@ import { notifyManagers } from '@/hooks/useNotifications';
       },
     });
  
+   const updateLeaveRequest = useMutation({
+     mutationFn: async ({
+       id,
+       startDate,
+       endDate,
+       startTime,
+       endTime,
+       leaveType,
+       reason,
+     }: {
+       id: string;
+       startDate: string;
+       endDate: string;
+       startTime?: string | null;
+       endTime?: string | null;
+       leaveType?: string | null;
+       reason?: string | null;
+     }) => {
+       const { data, error } = await supabase
+         .from('leave_requests')
+         .update({
+           start_date: startDate,
+           end_date: endDate,
+           start_time: startTime ?? null,
+           end_time: endTime ?? null,
+           leave_type: leaveType ?? null,
+           reason: reason ?? null,
+         })
+         .eq('id', id)
+         .select()
+         .single();
+
+       if (error) throw error;
+       return data;
+     },
+     onSuccess: () => {
+       queryClient.invalidateQueries({ queryKey: queryKeys.leaveRequests });
+       toast.success('Leave request updated');
+     },
+     onError: (error) => {
+       toast.error(`Failed to update leave request: ${error.message}`);
+     },
+   });
+
    const updateLeaveStatus = useMutation({
      mutationFn: async ({
        id,
@@ -138,6 +188,7 @@ import { notifyManagers } from '@/hooks/useNotifications';
      isError: leaveQuery.isError,
      error: leaveQuery.error,
      createLeaveRequest,
+     updateLeaveRequest,
      updateLeaveStatus,
      getConflicts,
      refetch: leaveQuery.refetch,

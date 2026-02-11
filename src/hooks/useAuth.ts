@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { devLog, devWarn } from '@/lib/logger';
 
 export type AppRole = 'admin' | 'manager' | null;
 
@@ -45,12 +46,12 @@ export function useAuth() {
            .maybeSingle();
  
          if (error) {
-           console.warn('[useAuth] Error fetching role:', error.message);
+           devWarn('[useAuth] Error fetching role:', error.message);
            return null;
          }
          return (data?.role as AppRole) ?? null;
        } catch (err) {
-         console.warn('[useAuth] Exception fetching role:', err);
+         devWarn('[useAuth] Exception fetching role:', err);
          return null;
        }
     };
@@ -58,13 +59,8 @@ export function useAuth() {
     // 1. SET UP LISTENER FIRST (before getSession) - critical for catching auth events
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        console.log('[useAuth] onAuthStateChange:', event);
-        
-        // Skip if initial load hasn't completed yet - let initializeAuth handle it
-        if (!initialLoadComplete) {
-          console.log('[useAuth] Skipping - initial load not complete');
-          return;
-        }
+        devLog('[useAuth] onAuthStateChange:', event);
+        if (!initialLoadComplete) return;
 
         const user = session?.user ?? null;
 
@@ -77,11 +73,15 @@ export function useAuth() {
         });
 
         if (user) {
-          fetchRole(user.id).then((role) => {
-            if (isMounted) {
-              setAuthState((prev) => ({ ...prev, role }));
-            }
-          });
+          fetchRole(user.id)
+            .then((role) => {
+              if (isMounted) {
+                setAuthState((prev) => ({ ...prev, role }));
+              }
+            })
+            .catch(() => {
+              // Role fetch failed; state already has role: null, no need to update
+            });
         }
       }
     );
@@ -89,7 +89,7 @@ export function useAuth() {
     // Watchdog: force loading: false if stuck
      watchdogTimer = setTimeout(() => {
        if (isMounted) {
-         console.warn('[useAuth] Watchdog timeout reached - forcing loading: false');
+         devWarn('[useAuth] Watchdog timeout reached - forcing loading: false');
          safeSetState({ user: null, session: null, loading: false, role: null });
        }
      }, AUTH_TIMEOUT_MS);

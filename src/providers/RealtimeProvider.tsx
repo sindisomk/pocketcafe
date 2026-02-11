@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { queryKeys } from '@/lib/queryKeys';
 import { getTodayUK } from '@/lib/datetime';
+import { devLog } from '@/lib/logger';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface RealtimeContextValue {
@@ -41,7 +42,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
           table: 'attendance_records',
         },
         (payload) => {
-          console.log('[Realtime] attendance_records change:', payload.eventType);
+          devLog('[Realtime] attendance_records change:', payload.eventType);
           setLastSync(new Date());
           const today = getTodayUK();
           queryClient.invalidateQueries({ queryKey: queryKeys.attendance(today) });
@@ -56,7 +57,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
           table: 'shifts',
         },
         (payload) => {
-          console.log('[Realtime] shifts change:', payload.eventType);
+          devLog('[Realtime] shifts change:', payload.eventType);
           setLastSync(new Date());
           // Invalidate all shift-related queries
           queryClient.invalidateQueries({ 
@@ -79,7 +80,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
           table: 'leave_requests',
         },
         (payload) => {
-          console.log('[Realtime] leave_requests change:', payload.eventType);
+          devLog('[Realtime] leave_requests change:', payload.eventType);
           setLastSync(new Date());
           queryClient.invalidateQueries({ queryKey: queryKeys.leaveRequests });
         }
@@ -92,7 +93,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
           table: 'staff_profiles',
         },
         (payload) => {
-          console.log('[Realtime] staff_profiles change:', payload.eventType);
+          devLog('[Realtime] staff_profiles change:', payload.eventType);
           setLastSync(new Date());
           queryClient.invalidateQueries({ queryKey: queryKeys.staff });
         }
@@ -105,7 +106,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
           table: 'no_show_records',
         },
         (payload) => {
-          console.log('[Realtime] no_show_records change:', payload.eventType);
+          devLog('[Realtime] no_show_records change:', payload.eventType);
           setLastSync(new Date());
           queryClient.invalidateQueries({ 
             predicate: (query) => {
@@ -123,7 +124,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
           table: 'leave_balances',
         },
         (payload) => {
-          console.log('[Realtime] leave_balances change:', payload.eventType);
+          devLog('[Realtime] leave_balances change:', payload.eventType);
           setLastSync(new Date());
           queryClient.invalidateQueries({ 
             predicate: (query) => {
@@ -141,7 +142,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
           table: 'notifications',
         },
         (payload) => {
-          console.log('[Realtime] notifications change:', payload.eventType);
+          devLog('[Realtime] notifications change:', payload.eventType);
           setLastSync(new Date());
           queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
         }
@@ -154,7 +155,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
           table: 'app_settings',
         },
         (payload) => {
-          console.log('[Realtime] app_settings change:', payload.eventType);
+          devLog('[Realtime] app_settings change:', payload.eventType);
           setLastSync(new Date());
           queryClient.invalidateQueries({ 
             predicate: (query) => {
@@ -165,14 +166,14 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
         }
       )
       .subscribe((status) => {
-        console.log('[Realtime] Connection status:', status);
+        devLog('[Realtime] Connection status:', status);
         setIsConnected(status === 'SUBSCRIBED');
       });
 
     channelRef.current = channel;
 
     return () => {
-      console.log('[Realtime] Cleaning up subscription');
+      devLog('[Realtime] Cleaning up subscription');
       channel.unsubscribe();
     };
   }, [queryClient]);
