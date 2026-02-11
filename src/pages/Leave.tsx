@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format, differenceInDays } from 'date-fns';
-import { CalendarDays, AlertTriangle, Check, X, Loader2, Plus, Clock } from 'lucide-react';
+import { CalendarDays, AlertTriangle, Check, X, Loader2, Plus, Clock, History } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +22,10 @@ export default function Leave() {
   const pendingRequests = leaveRequests.filter((r) => r.status === 'pending');
   const approvedRequests = leaveRequests.filter((r) => r.status === 'approved');
   const rejectedRequests = leaveRequests.filter((r) => r.status === 'rejected');
+  // History: all requests, most recent first (by created_at)
+  const historyRequests = [...leaveRequests].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
 
   const handleApprove = async (id: string) => {
     await updateLeaveStatus.mutateAsync({ id, status: 'approved' });
@@ -76,6 +80,12 @@ export default function Leave() {
             </span>
             <span>•</span>
             <span>{duration} day{duration > 1 ? 's' : ''}</span>
+            {request.leave_type && (
+              <>
+                <span>•</span>
+                <span>{request.leave_type}</span>
+              </>
+            )}
           </div>
 
           {request.reason && (
@@ -128,53 +138,19 @@ export default function Leave() {
           </Button>
         </div>
 
-        {/* Leave Balances Summary */}
-        {(isAdmin || isManager) && leaveBalances && leaveBalances.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Clock className="h-5 w-5" />
-                Staff Leave Balances
-              </CardTitle>
-              <CardDescription>
-                Overview of remaining leave hours for the year
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {leaveBalances.slice(0, 6).map((balance: any) => {
-                  const total = balance.total_entitlement_hours + balance.accrued_hours;
-                  const available = total - balance.used_hours;
-                  const usedPercent = total > 0 ? (balance.used_hours / total) * 100 : 0;
-                  
-                  return (
-                    <div key={balance.id} className="p-3 rounded-lg border bg-muted/30">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={balance.staff_profiles?.profile_photo_url ?? undefined} />
-                          <AvatarFallback className="text-[10px]">
-                            {balance.staff_profiles?.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm font-medium truncate">
-                          {balance.staff_profiles?.name}
-                        </span>
-                      </div>
-                      <Progress value={usedPercent} className="h-2 mb-1" />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>{available.toFixed(1)}h remaining</span>
-                        <span>{balance.used_hours.toFixed(1)}h used</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        <Tabs defaultValue="pending">
+        <Tabs defaultValue={isAdmin || isManager ? 'balances' : 'pending'}>
           <TabsList>
+            {(isAdmin || isManager) && (
+              <TabsTrigger value="balances" className="gap-2">
+                <Clock className="h-4 w-4" />
+                Leave Balances
+                {leaveBalances && leaveBalances.length > 0 && (
+                  <Badge variant="secondary" className="ml-1">
+                    {leaveBalances.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            )}
             <TabsTrigger value="pending" className="gap-2">
               Pending
               {pendingRequests.length > 0 && (
@@ -185,7 +161,70 @@ export default function Leave() {
             </TabsTrigger>
             <TabsTrigger value="approved">Approved</TabsTrigger>
             <TabsTrigger value="rejected">Rejected</TabsTrigger>
+            <TabsTrigger value="history" className="gap-2">
+              <History className="h-4 w-4" />
+              History
+            </TabsTrigger>
           </TabsList>
+
+          {(isAdmin || isManager) && (
+            <TabsContent value="balances" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Clock className="h-5 w-5" />
+                    Staff Leave Balances
+                  </CardTitle>
+                  <CardDescription>
+                    Salaried staff have 28 days statutory leave; zero-hour staff accrue leave from hours worked (12.07%). Open a staff profile to set up or refresh their balance.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {balancesLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : !leaveBalances || leaveBalances.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Clock className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p>No leave balances yet</p>
+                      <p className="text-sm mt-1">
+                        Open a staff profile to set up 28 days for salaried staff or sync accrual for zero-hour staff.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {leaveBalances.map((balance: any) => {
+                        const total = (balance.total_entitlement_hours ?? 0) + (balance.accrued_hours ?? 0);
+                        const available = total - (balance.used_hours ?? 0);
+                        const usedPercent = total > 0 ? ((balance.used_hours ?? 0) / total) * 100 : 0;
+                        return (
+                          <div key={balance.id} className="p-3 rounded-lg border bg-muted/30">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={balance.staff_profiles?.profile_photo_url ?? undefined} />
+                                <AvatarFallback className="text-[10px]">
+                                  {balance.staff_profiles?.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-sm font-medium truncate">
+                                {balance.staff_profiles?.name}
+                              </span>
+                            </div>
+                            <Progress value={usedPercent} className="h-2 mb-1" />
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                              <span>{available.toFixed(1)}h remaining</span>
+                              <span>{(balance.used_hours ?? 0).toFixed(1)}h used</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           <TabsContent value="pending" className="mt-4">
             <Card>
@@ -243,6 +282,36 @@ export default function Leave() {
                 ) : (
                   <div className="space-y-3">
                     {rejectedRequests.map((request) => renderRequestCard(request))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <History className="h-5 w-5" />
+                  Leave History
+                </CardTitle>
+                <CardDescription>
+                  All leave requests, most recent first
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : historyRequests.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <History className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>No leave requests yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {historyRequests.map((request) => renderRequestCard(request))}
                   </div>
                 )}
               </CardContent>

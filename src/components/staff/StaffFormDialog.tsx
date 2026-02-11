@@ -37,7 +37,8 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
  import { Loader2 } from 'lucide-react';
 import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT_LABELS } from '@/types/staff';
- import { useStaff } from '@/hooks/useStaff';
+ import { useAuth } from '@/hooks/useAuth';
+import { useStaff } from '@/hooks/useStaff';
  
  // UK National Insurance Number format validation
  const niNumberRegex = /^[A-CEGHJ-PR-TW-Z]{2}\d{6}[A-D]$/i;
@@ -110,7 +111,8 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
  ];
  
  export function StaffFormDialog({ open, onOpenChange, staff }: StaffFormDialogProps) {
-   const { createStaff, updateStaff } = useStaff();
+   const { isAdmin } = useAuth();
+   const { createStaff, updateStaffAdmin, updateStaffManager } = useStaff();
    const [isSubmitting, setIsSubmitting] = useState(false);
    const isEditMode = !!staff;
  
@@ -199,7 +201,21 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
        };
  
        if (isEditMode && staff) {
-         await updateStaff.mutateAsync({ id: staff.id, ...payload });
+         if (isAdmin) {
+           await updateStaffAdmin.mutateAsync({ id: staff.id, ...payload });
+         } else {
+           await updateStaffManager.mutateAsync({
+             id: staff.id,
+             name: payload.name,
+             role: payload.role,
+             job_title: payload.job_title,
+             contract_type: payload.contract_type,
+             contact_email: payload.contact_email,
+             contact_phone: payload.contact_phone,
+             profile_photo_url: payload.profile_photo_url,
+             start_date: payload.start_date,
+           });
+         }
        } else {
          await createStaff.mutateAsync(payload);
        }
@@ -482,7 +498,7 @@ import { StaffProfile, StaffRole, ContractType, JobTitle, JOB_TITLES, DEPARTMENT
                      <FormLabel>Contract Type *</FormLabel>
                      <Select onValueChange={field.onChange} value={field.value}>
                        <FormControl>
-                         <SelectTrigger>
+                         <SelectTrigger className="text-left [&>span]:text-left">
                            <SelectValue placeholder="Select contract type" />
                          </SelectTrigger>
                        </FormControl>

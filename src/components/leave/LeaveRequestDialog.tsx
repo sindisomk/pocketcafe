@@ -33,6 +33,7 @@
    const [selectedStaff, setSelectedStaff] = useState<string>('');
    const [startDate, setStartDate] = useState<Date>();
    const [endDate, setEndDate] = useState<Date>();
+   const [leaveType, setLeaveType] = useState<string>('');
    const [reason, setReason] = useState('');
  
    const conflicts = startDate && endDate
@@ -42,17 +43,19 @@
    const handleSubmit = async () => {
      if (!selectedStaff || !startDate || !endDate) return;
  
-     await createLeaveRequest.mutateAsync({
+    await createLeaveRequest.mutateAsync({
        staffId: selectedStaff,
        startDate: format(startDate, 'yyyy-MM-dd'),
        endDate: format(endDate, 'yyyy-MM-dd'),
+       leaveType: leaveType || undefined,
        reason: reason || undefined,
      });
- 
+
      // Reset form
      setSelectedStaff('');
      setStartDate(undefined);
      setEndDate(undefined);
+     setLeaveType('');
      setReason('');
      onOpenChange(false);
    };
@@ -88,7 +91,26 @@
                </Select>
              </div>
            )}
- 
+
+           {/* Leave type (UK) */}
+           <div className="space-y-2">
+             <Label>Leave Type</Label>
+             <Select value={leaveType} onValueChange={setLeaveType}>
+               <SelectTrigger>
+                 <SelectValue placeholder="Select leave type" />
+               </SelectTrigger>
+               <SelectContent>
+                 <SelectItem value="Annual Leave">Annual Leave</SelectItem>
+                 <SelectItem value="Sick Leave">Sick Leave</SelectItem>
+                 <SelectItem value="Unpaid Leave">Unpaid Leave</SelectItem>
+                 <SelectItem value="Parental Leave">Parental Leave</SelectItem>
+                 <SelectItem value="Bereavement Leave">Bereavement Leave</SelectItem>
+                 <SelectItem value="Time Off in Lieu (TOIL)">Time Off in Lieu (TOIL)</SelectItem>
+                 <SelectItem value="Other">Other</SelectItem>
+               </SelectContent>
+             </Select>
+           </div>
+
            {/* Date range */}
            <div className="grid grid-cols-2 gap-4">
              <div className="space-y-2">

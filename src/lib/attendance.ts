@@ -1,7 +1,9 @@
 /**
  * Lateness and No-Show calculation utilities
- * Compares clock-in times against scheduled shift starts
+ * Compares clock-in times against scheduled shift starts.
+ * Uses UK timezone (Europe/London) for consistent behaviour.
  */
+import { parseShiftDateTimeUK, nowInUK } from '@/lib/datetime';
 
 export interface LatenessResult {
   isLate: boolean;
@@ -10,7 +12,7 @@ export interface LatenessResult {
 }
 
 /**
- * Calculate if a clock-in is late compared to scheduled shift start
+ * Calculate if a clock-in is late compared to scheduled shift start (UK time).
  */
 export function calculateLateness(
   clockInTime: Date,
@@ -22,24 +24,14 @@ export function calculateLateness(
     return { isLate: false, lateMinutes: 0, graceApplied: false };
   }
 
-  // Normalize time format (handle both "08:00" and "08:00:00")
-  const normalizedTime = scheduledStartTime.length === 5 
-    ? `${scheduledStartTime}:00` 
-    : scheduledStartTime;
-
-  // Build scheduled datetime
-  const scheduledDateTime = new Date(`${shiftDate}T${normalizedTime}`);
-  
-  // Calculate difference in minutes
+  const scheduledDateTime = parseShiftDateTimeUK(shiftDate, scheduledStartTime);
   const diffMs = clockInTime.getTime() - scheduledDateTime.getTime();
   const diffMinutes = Math.floor(diffMs / 60000);
-  
-  // Within grace period = not late
+
   if (diffMinutes <= graceMinutes) {
     return { isLate: false, lateMinutes: 0, graceApplied: diffMinutes > 0 };
   }
-  
-  // Late
+
   return {
     isLate: true,
     lateMinutes: diffMinutes,
@@ -48,7 +40,7 @@ export function calculateLateness(
 }
 
 /**
- * Check if staff is a no-show based on threshold
+ * Check if staff is a no-show based on threshold (UK time).
  * @returns true if staff is past the no-show threshold and hasn't clocked in
  */
 export function isNoShow(
@@ -61,16 +53,16 @@ export function isNoShow(
     return false;
   }
 
-  // Normalize time format
-  const normalizedTime = scheduledStartTime.length === 5 
-    ? `${scheduledStartTime}:00` 
-    : scheduledStartTime;
-
-  const scheduledDateTime = new Date(`${shiftDate}T${normalizedTime}`);
+  const scheduledDateTime = parseShiftDateTimeUK(shiftDate, scheduledStartTime);
   const diffMs = currentTime.getTime() - scheduledDateTime.getTime();
   const diffMinutes = Math.floor(diffMs / 60000);
-  
+
   return diffMinutes >= thresholdMinutes;
+}
+
+/** Get current time in UK for use in lateness/no-show (e.g. when caller doesn't pass a time) */
+export function getNowUK(): Date {
+  return nowInUK();
 }
 
 /**

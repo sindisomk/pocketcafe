@@ -4,6 +4,7 @@ import { Shift, ShiftWithStaff, WeeklySchedule, SHIFT_TIMES, getEveningEndTime }
 import { toast } from 'sonner';
 import { format, startOfWeek, addDays } from 'date-fns';
 import { queryKeys } from '@/lib/queryKeys';
+import { getTodayUK } from '@/lib/datetime';
 
 export function useSchedule(weekStartDate: Date) {
   const queryClient = useQueryClient();
@@ -137,8 +138,7 @@ export function useSchedule(weekStartDate: Date) {
         queryClient.invalidateQueries({ queryKey: queryKeys.weeklySchedule(weekStart) });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.shifts(weekStart) });
-      const today = format(new Date(), 'yyyy-MM-dd');
-      queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(today) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(getTodayUK()) });
     },
     onError: (error) => {
       if (error.message.includes('duplicate')) {
@@ -169,8 +169,7 @@ export function useSchedule(weekStartDate: Date) {
         queryClient.invalidateQueries({ queryKey: queryKeys.weeklySchedule(weekStart) });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.shifts(weekStart) });
-      const today = format(new Date(), 'yyyy-MM-dd');
-      queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(today) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(getTodayUK()) });
     },
     onError: (error) => {
       toast.error(`Failed to remove shift: ${error.message}`);

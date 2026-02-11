@@ -1,5 +1,6 @@
  import { useQuery } from '@tanstack/react-query';
  import { supabase } from '@/integrations/supabase/client';
+ import { queryKeys } from '@/lib/queryKeys';
  
  interface KioskStaff {
    id: string;
@@ -10,7 +11,7 @@
  
  export function useKioskStaff() {
    const query = useQuery({
-     queryKey: ['kiosk-staff'],
+     queryKey: queryKeys.kioskStaff,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('staff_profiles_manager')

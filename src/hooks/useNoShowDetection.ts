@@ -1,8 +1,8 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { isNoShow } from '@/lib/attendance';
-import { format } from 'date-fns';
+import { isNoShow, getNowUK } from '@/lib/attendance';
+import { getTodayUK } from '@/lib/datetime';
 import { notifyManagers } from '@/hooks/useNotifications';
 
 const NO_SHOW_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
@@ -27,8 +27,8 @@ export function useNoShowDetection(options: UseNoShowDetectionOptions = {}) {
     isRunningRef.current = true;
 
     try {
-      const today = format(new Date(), 'yyyy-MM-dd');
-      const now = new Date();
+      const today = getTodayUK();
+      const now = getNowUK();
 
       // Get today's shifts
       const { data: shifts, error: shiftsError } = await supabase

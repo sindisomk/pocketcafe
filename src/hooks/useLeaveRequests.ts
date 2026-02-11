@@ -33,6 +33,7 @@ import { notifyManagers } from '@/hooks/useNotifications';
        staffId: string;
        startDate: string;
        endDate: string;
+       leaveType?: string;
        reason?: string;
      }) => {
        const { data, error } = await supabase
@@ -41,6 +42,7 @@ import { notifyManagers } from '@/hooks/useNotifications';
            staff_id: request.staffId,
            start_date: request.startDate,
            end_date: request.endDate,
+           leave_type: request.leaveType || null,
            reason: request.reason,
          })
          .select()

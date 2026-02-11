@@ -67,27 +67,21 @@ export function useAuth() {
         }
 
         const user = session?.user ?? null;
-        
-        // Update user/session immediately (don't await role fetch)
+
+        // Clear role when user changes so we never show previous user's role
         safeSetState({
           user,
           session,
           loading: false,
-          role: authState.role, // Keep existing role temporarily
+          role: null,
         });
 
-        // Fetch role in background (fire-and-forget)
         if (user) {
-          fetchRole(user.id).then(role => {
+          fetchRole(user.id).then((role) => {
             if (isMounted) {
-              setAuthState(prev => ({ ...prev, role }));
+              setAuthState((prev) => ({ ...prev, role }));
             }
           });
-        } else {
-          // User signed out - clear role
-          if (isMounted) {
-            setAuthState(prev => ({ ...prev, role: null }));
-          }
         }
       }
     );

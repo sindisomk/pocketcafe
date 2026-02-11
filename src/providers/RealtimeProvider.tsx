@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, createContext, useContext, ReactNode } fro
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { queryKeys } from '@/lib/queryKeys';
-import { format } from 'date-fns';
+import { getTodayUK } from '@/lib/datetime';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface RealtimeContextValue {
@@ -30,8 +30,6 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
   const channelRef = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
-    const today = format(new Date(), 'yyyy-MM-dd');
-
     // Create a single channel for all database changes
     const channel = supabase
       .channel('db-changes')
@@ -45,9 +43,8 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
         (payload) => {
           console.log('[Realtime] attendance_records change:', payload.eventType);
           setLastSync(new Date());
-          // Invalidate attendance queries
+          const today = getTodayUK();
           queryClient.invalidateQueries({ queryKey: queryKeys.attendance(today) });
-          // Also invalidate shifts-today since TodayRoster uses both
           queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(today) });
         }
       )
@@ -131,7 +128,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
           queryClient.invalidateQueries({ 
             predicate: (query) => {
               const key = query.queryKey;
-              return Array.isArray(key) && key[0] === 'leave-balance';
+              return Array.isArray(key) && (key[0] === 'leave-balance' || key[0] === 'leave-balances');
             }
           });
         }

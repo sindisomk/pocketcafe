@@ -13,6 +13,7 @@ import { useNoShowDetection } from '@/hooks/useNoShowDetection';
 import { useWorkHoursSettings } from '@/hooks/useAppSettings';
 import { AttendanceRecord } from '@/types/attendance';
 import { format } from 'date-fns';
+import { getTodayUK } from '@/lib/datetime';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
@@ -21,7 +22,12 @@ import { ShiftWithStaff } from '@/types/schedule';
 
 // Sleep mode timeout: 5 minutes of inactivity
 const SLEEP_TIMEOUT_MS = 5 * 60 * 1000;
- 
+
+/**
+ * Kiosk page: staff clock-in (face or manual), manager override.
+ * Manager override: the manager must be logged in on this device to insert
+ * attendance on behalf of another staff member (RLS allows admin/manager to insert).
+ */
 export default function Kiosk() {
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -52,7 +58,7 @@ export default function Kiosk() {
     thresholdMinutes: settings.noShowThresholdMinutes 
   });
 
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const today = getTodayUK();
 
   // Fetch today's shifts for lateness calculation
   const { data: shifts = [] } = useQuery({

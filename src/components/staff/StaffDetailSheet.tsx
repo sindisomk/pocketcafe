@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { User, Pencil, Scan, CheckCircle, Calendar } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { User, Pencil, Scan, CheckCircle, Calendar, Trash2 } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -7,6 +7,15 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -18,6 +27,7 @@ import { StaffProfile } from '@/types/staff';
 import { useAuth } from '@/hooks/useAuth';
 import { useStaff } from '@/hooks/useStaff';
 import { useLeaveBalance } from '@/hooks/useLeaveBalance';
+import { useStaffYTDHours } from '@/hooks/usePayrollData';
 import { cn } from '@/lib/utils';
 import { FaceEnrollmentDialog } from './FaceEnrollmentDialog';
 
@@ -46,11 +56,70 @@ const roleLabels: Record<string, string> = {
 
 export function StaffDetailSheet({ staff, open, onOpenChange, onEdit }: StaffDetailSheetProps) {
   const { isAdmin } = useAuth();
-  const { updateStaff } = useStaff();
+  const { updateStaffAdmin, deleteStaff } = useStaff();
   const [showEnrollment, setShowEnrollment] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   // Get leave balance for this staff member
-  const { balance, availableHours, isLoading: balanceLoading } = useLeaveBalance(staff?.id);
+  const {
+    balance,
+    availableHours,
+    isLoading: balanceLoading,
+    initializeSalariedBalance,
+    recalculateAccrual,
+  } = useLeaveBalance(staff?.id);
+  const { ytdHours, isLoading: ytdHoursLoading } = useStaffYTDHours(staff?.id);
+  const lastAccrualSyncRef = useRef<{ staffId: string; ytdHours: number } | null>(null);
+  useEffect(() => {
+    if (!open) lastAccrualSyncRef.current = null;
+  }, [open]);
+
+  // Salaried staff: auto-initialize statutory 28 days (224h) when they have no balance
+  useEffect(() => {
+    if (
+      open &&
+      staff?.id &&
+      staff.contract_type === 'salaried' &&
+      !balance &&
+      !balanceLoading &&
+      !initializeSalariedBalance.isPending
+    ) {
+      initializeSalariedBalance.mutate();
+    }
+  }, [
+    open,
+    staff?.id,
+    staff?.contract_type,
+    balance,
+    balanceLoading,
+    initializeSalariedBalance.isPending,
+  ]);
+
+  // Zero-hour staff: sync accrual from YTD hours worked (12.07%) when viewing (once per staff/ytd)
+  useEffect(() => {
+    const alreadySynced =
+      lastAccrualSyncRef.current?.staffId === staff?.id &&
+      lastAccrualSyncRef.current?.ytdHours === ytdHours;
+    if (
+      open &&
+      staff?.id &&
+      staff.contract_type === 'zero_rate' &&
+      !ytdHoursLoading &&
+      typeof ytdHours === 'number' &&
+      !recalculateAccrual.isPending &&
+      !alreadySynced
+    ) {
+      lastAccrualSyncRef.current = { staffId: staff.id, ytdHours };
+      recalculateAccrual.mutate(ytdHours);
+    }
+  }, [
+    open,
+    staff?.id,
+    staff?.contract_type,
+    ytdHoursLoading,
+    ytdHours,
+    recalculateAccrual.isPending,
+  ]);
 
   if (!staff) return null;
  
@@ -67,10 +136,16 @@ export function StaffDetailSheet({ staff, open, onOpenChange, onEdit }: StaffDet
   const isSalaried = staff.contract_type === 'salaried';
 
   const handleContractToggle = async (checked: boolean) => {
-    await updateStaff.mutateAsync({
+    await updateStaffAdmin.mutateAsync({
       id: staff.id,
       contract_type: checked ? 'salaried' : 'zero_rate',
     });
+  };
+
+  const handleDeleteConfirm = async () => {
+    await deleteStaff.mutateAsync(staff.id);
+    setShowDeleteConfirm(false);
+    onOpenChange(false);
   };
 
   return (
@@ -146,7 +221,7 @@ export function StaffDetailSheet({ staff, open, onOpenChange, onEdit }: StaffDet
                 <Switch
                   checked={isSalaried}
                   onCheckedChange={handleContractToggle}
-                  disabled={updateStaff.isPending}
+                  disabled={updateStaffAdmin.isPending}
                 />
               )}
             </div>
@@ -250,16 +325,45 @@ export function StaffDetailSheet({ staff, open, onOpenChange, onEdit }: StaffDet
                 <Pencil className="h-4 w-4" />
                 Edit Staff Member
               </Button>
+              <Button
+                variant="outline"
+                className="w-full gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={deleteStaff.isPending}
+              >
+                <Trash2 className="h-4 w-4" />
+                Remove Staff Member
+              </Button>
             </>
           )}
         </div>
       </SheetContent>
-     <FaceEnrollmentDialog
-       open={showEnrollment}
-       onOpenChange={setShowEnrollment}
-       staffId={staff.id}
-       staffName={staff.name}
-     />
+      <FaceEnrollmentDialog
+        open={showEnrollment}
+        onOpenChange={setShowEnrollment}
+        staffId={staff.id}
+        staffName={staff.name}
+      />
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove staff member?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove {staff.name} from the staff directory. Associated records (attendance, leave, etc.) may be affected. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleteStaff.isPending}
+            >
+              Remove
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
 }

@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { queryKeys } from '@/lib/queryKeys';
+import { getTodayUK } from '@/lib/datetime';
 
 export interface NoShowRecord {
   id: string;
@@ -30,11 +32,10 @@ export interface NoShowRecord {
 
 export function useNoShows(date?: Date) {
   const queryClient = useQueryClient();
-  const targetDate = date || new Date();
-  const dateStr = format(targetDate, 'yyyy-MM-dd');
+  const dateStr = date ? format(date, 'yyyy-MM-dd') : getTodayUK();
 
   const query = useQuery({
-    queryKey: ['no-shows', dateStr],
+    queryKey: queryKeys.noShows(dateStr),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('no_show_records')
@@ -78,7 +79,7 @@ export function useNoShows(date?: Date) {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['no-shows', dateStr] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.noShows(dateStr) });
       toast.success('No-show resolved');
     },
     onError: (error) => {

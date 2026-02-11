@@ -6,8 +6,9 @@
    DialogDescription,
  } from '@/components/ui/dialog';
  import { FaceEnrollmentCapture } from './FaceEnrollmentCapture';
- import { useFaceEnrollment } from '@/hooks/useFaceEnrollment';
- import { useQueryClient } from '@tanstack/react-query';
+import { useFaceEnrollment } from '@/hooks/useFaceEnrollment';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
  
  interface FaceEnrollmentDialogProps {
    open: boolean;
@@ -29,7 +30,7 @@
      const result = await enrollFace(staffId, imageBase64);
      if (result.success) {
        // Invalidate staff queries to refresh enrollment status
-       queryClient.invalidateQueries({ queryKey: ['staff'] });
+       queryClient.invalidateQueries({ queryKey: queryKeys.staff });
        onOpenChange(false);
      }
    };

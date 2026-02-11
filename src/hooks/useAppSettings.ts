@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { queryKeys } from '@/lib/queryKeys';
 
 export interface WorkHoursSettings {
   latenessGraceMinutes: number;
@@ -22,15 +23,11 @@ const DEFAULT_WORK_HOURS: WorkHoursSettings = {
   autoClockOutHours: 12,
 };
 
-export const queryKeys = {
-  workHoursSettings: ['settings', 'work_hours'] as const,
-};
-
 export function useWorkHoursSettings() {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: queryKeys.workHoursSettings,
+    queryKey: queryKeys.settingsWorkHours,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('app_settings')
@@ -70,7 +67,7 @@ export function useWorkHoursSettings() {
       return newSettings;
     },
     onSuccess: (newSettings) => {
-      queryClient.setQueryData(queryKeys.workHoursSettings, newSettings);
+      queryClient.setQueryData(queryKeys.settingsWorkHours, newSettings);
       toast.success('Settings saved successfully');
     },
     onError: (error) => {

@@ -136,7 +136,7 @@ export function useLeaveBalance(staffId?: string) {
 // Hook to get all staff leave balances (for managers)
 export function useAllLeaveBalances() {
   return useQuery({
-    queryKey: ['leave-balances', 'all'],
+    queryKey: queryKeys.leaveBalancesAll,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('leave_balances')

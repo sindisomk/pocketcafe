@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { AttendanceRecord, AttendanceRecordWithStaff } from '@/types/attendance';
+import { AttendanceRecordWithStaff } from '@/types/attendance';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { queryKeys } from '@/lib/queryKeys';
-import { calculateLateness } from '@/lib/attendance';
+import { getTodayUK } from '@/lib/datetime';
+import { calculateLateness, getNowUK } from '@/lib/attendance';
 import { notifyManagers } from '@/hooks/useNotifications';
 
 interface ClockInParams {
@@ -19,8 +20,7 @@ interface ClockInParams {
 
  export function useAttendance(date?: Date) {
    const queryClient = useQueryClient();
-   const targetDate = date || new Date();
-   const dateStr = format(targetDate, 'yyyy-MM-dd');
+   const dateStr = date ? format(date, 'yyyy-MM-dd') : getTodayUK();
  
    const attendanceQuery = useQuery({
      queryKey: queryKeys.attendance(dateStr),
@@ -58,15 +58,16 @@ interface ClockInParams {
       shiftDate,
       graceMinutes = 5
     }: ClockInParams) => {
-      const clockInTime = new Date();
+      const clockInTime = new Date(); // Store actual moment for DB
       const effectiveShiftDate = shiftDate || dateStr;
-      
-      // Calculate lateness if we have scheduled start time
+
+      // Lateness uses UK time so behaviour is consistent
       let isLate = false;
       let lateMinutes = 0;
-      
+
       if (scheduledStartTime) {
-        const lateness = calculateLateness(clockInTime, scheduledStartTime, effectiveShiftDate, graceMinutes);
+        const nowUK = getNowUK();
+        const lateness = calculateLateness(nowUK, scheduledStartTime, effectiveShiftDate, graceMinutes);
         isLate = lateness.isLate;
         lateMinutes = lateness.lateMinutes;
       }
@@ -115,13 +116,12 @@ interface ClockInParams {
       // Also invalidate shifts-today for TodayRoster
       queryClient.invalidateQueries({ queryKey: queryKeys.shiftsToday(dateStr) });
       
-      // Show appropriate toast based on lateness
+      // Show appropriate toast based on lateness (UK time)
       if (variables.scheduledStartTime) {
-        const clockInTime = new Date();
         const lateness = calculateLateness(
-          clockInTime, 
-          variables.scheduledStartTime, 
-          variables.shiftDate || dateStr, 
+          getNowUK(),
+          variables.scheduledStartTime,
+          variables.shiftDate || dateStr,
           variables.graceMinutes || 5
         );
         

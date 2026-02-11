@@ -187,6 +187,7 @@ export type Database = {
           created_at: string
           end_date: string
           id: string
+          leave_type: string | null
           reason: string | null
           review_notes: string | null
           reviewed_at: string | null
@@ -200,6 +201,7 @@ export type Database = {
           created_at?: string
           end_date: string
           id?: string
+          leave_type?: string | null
           reason?: string | null
           review_notes?: string | null
           reviewed_at?: string | null
@@ -213,6 +215,7 @@ export type Database = {
           created_at?: string
           end_date?: string
           id?: string
+          leave_type?: string | null
           reason?: string | null
           review_notes?: string | null
           reviewed_at?: string | null

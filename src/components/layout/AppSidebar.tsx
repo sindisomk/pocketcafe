@@ -1,43 +1,10 @@
-import { Users, LayoutDashboard, Calendar, Clock, Settings, LogOut, Coffee, CalendarDays, PoundSterling, BarChart3 } from 'lucide-react';
+import { LogOut, Coffee } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter, useSidebar } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-
-const navItems = [{
-  title: 'Dashboard',
-  url: '/',
-  icon: LayoutDashboard
-}, {
-  title: 'Staff',
-  url: '/staff',
-  icon: Users
-}, {
-  title: 'Schedule',
-  url: '/schedule',
-  icon: Calendar
-}, {
-  title: 'Attendance',
-  url: '/attendance',
-  icon: Clock
-}, {
-  title: 'Leave',
-  url: '/leave',
-  icon: CalendarDays
-}, {
-  title: 'Payroll',
-  url: '/payroll',
-  icon: PoundSterling
-}, {
-  title: 'Reports',
-  url: '/reports',
-  icon: BarChart3
-}, {
-  title: 'Settings',
-  url: '/settings',
-  icon: Settings
-}];
+import { getNavItemsForRole } from './navConfig';
 export function AppSidebar() {
   const location = useLocation();
   const {
@@ -53,16 +20,22 @@ export function AppSidebar() {
   const handleSignOut = async () => {
     await signOut();
   };
-  return <Sidebar className={cn("border-r-0 transition-all duration-300", collapsed ? "w-16" : "w-64")} collapsible="icon">
+
+  const navItems = getNavItemsForRole(isAdmin, isManager);
+
+  return (
+    <Sidebar className={cn("border-r-0 transition-all duration-300", collapsed ? "w-16" : "w-64")} collapsible="icon">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
             <Coffee className="h-5 w-5" />
           </div>
-          {!collapsed && <div className="flex flex-col">
+          {!collapsed && (
+            <div className="flex flex-col">
               <span className="text-lg font-semibold text-sidebar-foreground">PocketCafe</span>
               <span className="text-xs text-sidebar-foreground/60">{isAdmin ? 'Admin' : isManager ? 'Manager' : 'Staff'}</span>
-            </div>}
+            </div>
+          )}
         </div>
       </SidebarHeader>
 
@@ -70,17 +43,19 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map(item => {
-              const isActive = location.pathname === item.url;
-              return <SidebarMenuItem key={item.title}>
+              {navItems.map((item) => {
+                const isActive = location.pathname === item.url;
+                return (
+                  <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild isActive={isActive} tooltip={collapsed ? item.title : undefined}>
                       <NavLink to={item.url} className={cn("flex items-center gap-3 px-3 py-2 rounded-lg transition-colors", isActive ? "bg-sidebar-accent text-sidebar-primary" : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground")}>
                         <item.icon className="h-5 w-5 shrink-0" />
                         {!collapsed && <span className="font-medium">{item.title}</span>}
                       </NavLink>
                     </SidebarMenuButton>
-                  </SidebarMenuItem>;
-            })}
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -104,5 +79,6 @@ export function AppSidebar() {
             </Button>
           </div>}
       </SidebarFooter>
-    </Sidebar>;
+    </Sidebar>
+  );
 }

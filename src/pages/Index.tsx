@@ -10,6 +10,7 @@ import { useLeaveRequests } from '@/hooks/useLeaveRequests';
 import { checkRestPeriodViolations } from '@/lib/payroll';
 import { format, startOfWeek } from 'date-fns';
 import { Link } from 'react-router-dom';
+import { getTodayUK } from '@/lib/datetime';
 import { useMemo } from 'react';
 import { ConnectionStatus } from '@/components/system/ConnectionStatus';
 import { PageLoadingSkeleton } from '@/components/ui/loading-states';
@@ -28,9 +29,9 @@ export default function Index() {
   const lateCount = attendance.filter(a => a.is_late && a.status !== 'clocked_out').length;
   const noShowCount = noShows?.length ?? 0;
 
-  // Calculate today's labor cost
+  // Calculate today's labor cost (UK date)
   const todaysLabourCost = useMemo(() => {
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const today = getTodayUK();
     const todayShifts = shifts.filter(s => s.shift_date === today);
     return todayShifts.reduce((total, shift) => {
       const hours = shift.shift_type === 'morning' ? 7 : 7; // Base hours

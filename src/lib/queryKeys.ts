@@ -20,9 +20,20 @@ export const queryKeys = {
   
   // Payroll
   payrollAttendance: (start: string, end: string) => ['payroll-attendance', start, end] as const,
+  staffYTDHours: (staffId: string) => ['staff-ytd-hours', staffId] as const,
 
   // Notifications
   notifications: ['notifications'] as const,
+
+  // Settings
+  settingsWorkHours: ['settings', 'work_hours'] as const,
+  settingsShiftTimes: ['settings', 'shift_times'] as const,
+
+  // No-shows, history, kiosk
+  noShows: (date: string) => ['no-shows', date] as const,
+  attendanceHistory: (start: string, end: string) => ['attendance-history', start, end] as const,
+  leaveBalancesAll: ['leave-balances', 'all'] as const,
+  kioskStaff: ['kiosk-staff'] as const,
 } as const;
 
 // Helper type for query key

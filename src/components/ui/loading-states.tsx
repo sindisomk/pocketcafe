@@ -147,3 +147,22 @@ export function FullPageLoader({ text = 'Loading...' }: FullPageLoaderProps) {
     </div>
   );
 }
+
+/**
+ * Lightweight fallback for route-level Suspense (mobile-friendly: minimal DOM, fast paint).
+ */
+export function RouteFallback() {
+  return (
+    <div className="space-y-4 animate-in fade-in duration-200">
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-40 sm:w-56" />
+        <Skeleton className="h-4 w-full max-w-xs" />
+      </div>
+      <div className="space-y-3 pt-2">
+        <Skeleton className="h-20 w-full rounded-lg" />
+        <Skeleton className="h-20 w-full rounded-lg" />
+        <Skeleton className="h-20 w-full rounded-lg" />
+      </div>
+    </div>
+  );
+}

@@ -2,6 +2,7 @@ import { format } from 'date-fns';
 import { ShiftSlot } from './ShiftSlot';
 import { ShiftWithStaff, SHIFT_TIMES, getEveningEndTime, getEveningHours } from '@/types/schedule';
 import { cn } from '@/lib/utils';
+import { getTodayUK } from '@/lib/datetime';
 
 interface DayColumnProps {
   date: Date;
@@ -21,7 +22,7 @@ export function DayColumn({
   const dayName = format(date, 'EEE');
   const dayNumber = format(date, 'd');
   const monthName = format(date, 'MMM');
-  const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+  const isToday = format(date, 'yyyy-MM-dd') === getTodayUK();
   const isWeekend = date.getDay() === 0 || date.getDay() === 6;
 
   const morningShifts = shifts.filter(s => s.shift_type === 'morning');

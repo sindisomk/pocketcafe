@@ -137,46 +137,6 @@ export function useStaff() {
     },
   });
 
-  // Legacy updateStaff - routes to admin or manager based on context
-  // Deprecated: prefer using updateStaffAdmin or updateStaffManager directly
-  const updateStaff = useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<StaffProfile> & { id: string }) => {
-      // Try admin update first, fall back to manager update
-      const { data, error } = await supabase
-        .from('staff_profiles')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) {
-        // If admin update fails (likely RLS), try manager RPC
-        const { data: rpcResult, error: rpcError } = await supabase.rpc('manager_update_staff_profile', {
-          p_staff_id: id,
-          p_name: updates.name ?? null,
-          p_role: updates.role ?? null,
-          p_job_title: (updates.job_title as Parameters<typeof supabase.rpc<'manager_update_staff_profile'>>[1]['p_job_title']) ?? null,
-          p_contract_type: updates.contract_type ?? null,
-          p_contact_email: updates.contact_email ?? null,
-          p_contact_phone: updates.contact_phone ?? null,
-          p_profile_photo_url: updates.profile_photo_url ?? null,
-          p_start_date: updates.start_date ?? null,
-        });
-        
-        if (rpcError) throw rpcError;
-        return rpcResult;
-      }
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.staff });
-      toast.success('Staff member updated successfully');
-    },
-    onError: (error) => {
-      toast.error(`Failed to update staff member: ${error.message}`);
-    },
-  });
-
   const deleteStaff = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
@@ -201,7 +161,6 @@ export function useStaff() {
     isError: staffQuery.isError,
     error: staffQuery.error,
     createStaff,
-    updateStaff,
     updateStaffAdmin,
     updateStaffManager,
     deleteStaff,

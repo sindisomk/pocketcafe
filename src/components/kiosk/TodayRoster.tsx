@@ -13,6 +13,7 @@ import { ShiftWithStaff } from '@/types/schedule';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { queryKeys } from '@/lib/queryKeys';
+import { getTodayUK } from '@/lib/datetime';
 import { formatLateMinutes } from '@/lib/attendance';
 
 type RosterStatus = 'not_arrived' | 'late' | 'clocked_in' | 'on_break' | 'clocked_out' | 'no_show';
@@ -33,9 +34,8 @@ export function TodayRoster() {
   const { attendance, isLoading: attendanceLoading } = useAttendance();
   const { noShows } = useNoShows();
 
-  // Fetch today's shifts directly
-  const today = new Date();
-  const todayStr = format(today, 'yyyy-MM-dd');
+  // Fetch today's shifts (UK date)
+  const todayStr = getTodayUK();
 
   const { data: shifts = [], isLoading: shiftsLoading } = useQuery({
     queryKey: queryKeys.shiftsToday(todayStr),
@@ -179,7 +179,7 @@ export function TodayRoster() {
             Today's Roster
           </CardTitle>
           <span className="text-sm text-muted-foreground">
-            {format(today, 'EEE, MMM d')}
+            {format(new Date(todayStr + 'T12:00:00'), 'EEE, MMM d')}
           </span>
         </div>
 

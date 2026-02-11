@@ -21,6 +21,7 @@ import {
 import { cn } from '@/lib/utils';
 
 const settingsTabs = [
+  { id: 'outlet', label: 'Outlet Details', icon: Store },
   { id: 'shifts', label: 'Shift Times', icon: Clock },
   { id: 'overtime', label: 'Overtime', icon: TrendingUp },
   { id: 'leave', label: 'Leave', icon: CalendarDays },
@@ -28,13 +29,12 @@ const settingsTabs = [
   { id: 'payroll', label: 'Payroll & Tax', icon: PoundSterling },
   { id: 'budgets', label: 'Budgets', icon: Wallet },
   { id: 'pin', label: 'Manager PIN', icon: KeyRound },
-  { id: 'outlet', label: 'Outlet Details', icon: Store },
 ] as const;
 
 type SettingsTab = (typeof settingsTabs)[number]['id'];
 
 export default function Settings() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('shifts');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('outlet');
 
   return (
     <div className="space-y-6">

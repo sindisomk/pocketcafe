@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { queryKeys } from '@/lib/queryKeys';
 import { AttendanceRecordWithStaff } from '@/types/attendance';
 
 export function useAttendanceHistory(startDate: string, endDate: string) {
   return useQuery({
-    queryKey: ['attendance-history', startDate, endDate],
+    queryKey: queryKeys.attendanceHistory(startDate, endDate),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('attendance_records')

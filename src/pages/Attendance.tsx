@@ -18,6 +18,7 @@ import { useAttendance } from '@/hooks/useAttendance';
 import { useAttendanceHistory } from '@/hooks/useAttendanceHistory';
 import { useNoShows } from '@/hooks/useNoShows';
 import { format, differenceInMinutes, subDays } from 'date-fns';
+import { getTodayUK } from '@/lib/datetime';
 import { Link } from 'react-router-dom';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatLateMinutes } from '@/lib/attendance';
@@ -45,7 +46,7 @@ export default function Attendance() {
   const [selectedNoShow, setSelectedNoShow] = useState<string | null>(null);
   const [resolveNotes, setResolveNotes] = useState('');
 
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const today = getTodayUK();
 
   // History date range (default: last 7 days)
   const [historyStart, setHistoryStart] = useState(format(subDays(new Date(), 7), 'yyyy-MM-dd'));
@@ -348,7 +349,9 @@ export default function Attendance() {
                           {record.break_start_time && (
                             <span className="flex items-center gap-1">
                               <Coffee className="h-3 w-3" />
-                              Break taken
+                              {record.break_end_time
+                                ? `Break: ${formatDuration(record.break_start_time, record.break_end_time)}`
+                                : `On break (from ${format(new Date(record.break_start_time), 'h:mm a')})`}
                             </span>
                           )}
                         </div>

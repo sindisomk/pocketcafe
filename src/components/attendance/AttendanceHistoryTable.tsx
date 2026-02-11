@@ -98,6 +98,7 @@ export default function AttendanceHistoryTable({ records, isLoading }: Attendanc
                   <TableHead>Clock In</TableHead>
                   <TableHead className="hidden sm:table-cell">Break Start</TableHead>
                   <TableHead className="hidden sm:table-cell">Break End</TableHead>
+                  <TableHead>Break</TableHead>
                   <TableHead>Clock Out</TableHead>
                   <TableHead className="text-right">Duration</TableHead>
                 </TableRow>
@@ -132,6 +133,13 @@ export default function AttendanceHistoryTable({ records, isLoading }: Attendanc
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-sm font-mono">
                       {formatTime(record.break_end_time)}
+                    </TableCell>
+                    <TableCell className="text-sm font-mono whitespace-nowrap">
+                      {record.break_start_time && record.break_end_time
+                        ? formatDuration(record.break_start_time, record.break_end_time)
+                        : record.break_start_time
+                          ? 'In progress'
+                          : '—'}
                     </TableCell>
                     <TableCell className="text-sm font-mono">
                       {formatTime(record.clock_out_time)}
