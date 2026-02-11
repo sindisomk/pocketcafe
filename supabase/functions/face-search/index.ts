@@ -12,7 +12,8 @@ const CONFIDENCE_THRESHOLD = 80; // Minimum confidence for a match
 
 // Rate limiting configuration - tightened for security
 const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 3; // Max 3 requests per minute per IP (tightened for security)
+const RATE_LIMIT_MAX_REQUESTS = 3; // Max 3 requests per minute per IP
+const GLOBAL_RATE_LIMIT_MAX = 20; // Max 20 requests per minute globally (all IPs combined)
 
 // Image validation limits
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB max
@@ -50,12 +51,25 @@ async function checkRateLimit(
   supabaseKey: string, 
   clientIP: string
 ): Promise<{ allowed: boolean; remaining: number }> {
-  // Create a fresh client for rate limiting (without type constraints)
   const supabase = createClient(supabaseUrl, supabaseKey);
   
   const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
   
-  // Get current request count for this IP within the window
+  // Check global rate limit first (all IPs combined)
+  const { data: globalData, error: globalError } = await supabase
+    .from('face_search_rate_limits')
+    .select('request_count')
+    .gte('window_start', windowStart.toISOString());
+
+  if (!globalError && globalData) {
+    const totalRequests = globalData.reduce((sum, r) => sum + (r.request_count || 0), 0);
+    if (totalRequests >= GLOBAL_RATE_LIMIT_MAX) {
+      console.log(`[face-search] Global rate limit exceeded: ${totalRequests} requests`);
+      return { allowed: false, remaining: 0 };
+    }
+  }
+
+  // Check per-IP rate limit
   const { data: existing, error: selectError } = await supabase
     .from('face_search_rate_limits')
     .select('id, request_count, window_start')
@@ -67,19 +81,16 @@ async function checkRateLimit(
 
   if (selectError) {
     console.error('[face-search] Rate limit check error:', selectError);
-    // Allow request on error to avoid blocking legitimate traffic
     return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS };
   }
 
   const record = existing as RateLimitRecord | null;
 
   if (record) {
-    // Existing window - check if over limit
     if (record.request_count >= RATE_LIMIT_MAX_REQUESTS) {
       return { allowed: false, remaining: 0 };
     }
     
-    // Increment counter
     await supabase
       .from('face_search_rate_limits')
       .update({ request_count: record.request_count + 1 })
