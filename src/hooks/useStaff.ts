@@ -33,14 +33,23 @@ export function useStaff() {
     queryKey: [...queryKeys.staff, isAdmin ? 'admin' : 'manager'],
     queryFn: async () => {
       if (isAdmin) {
-        // Admins get full access to all columns via base table
+        // Admins use secure view that excludes face_token (biometric data never returned to clients)
         const { data, error } = await supabase
-          .from('staff_profiles')
+          .from('staff_profiles_admin')
           .select('*')
           .order('name');
         
         if (error) throw error;
-        return data as StaffProfileWithFaceToken[];
+        return (data ?? []).map(d => ({
+          ...d,
+          face_token: null, // Never expose face_token to client
+          contract_type: d.contract_type ?? 'zero_rate',
+          role: d.role ?? 'floor',
+          name: d.name ?? '',
+          id: d.id ?? '',
+          created_at: d.created_at ?? '',
+          updated_at: d.updated_at ?? '',
+        })) as StaffProfileWithFaceToken[];
       } else {
         // Managers/staff use the secure view (excludes ni_number, tax_code, hourly_rate, face_token, nic_category)
         const { data, error } = await supabase
