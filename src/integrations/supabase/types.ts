@@ -187,7 +187,6 @@ export type Database = {
           created_at: string
           deducted_at: string | null
           end_date: string
-          end_time: string | null
           id: string
           leave_type: string | null
           reason: string | null
@@ -196,7 +195,6 @@ export type Database = {
           reviewed_by: string | null
           staff_id: string
           start_date: string
-          start_time: string | null
           status: Database["public"]["Enums"]["leave_status"]
           updated_at: string
         }
@@ -204,7 +202,6 @@ export type Database = {
           created_at?: string
           deducted_at?: string | null
           end_date: string
-          end_time?: string | null
           id?: string
           leave_type?: string | null
           reason?: string | null
@@ -213,7 +210,6 @@ export type Database = {
           reviewed_by?: string | null
           staff_id: string
           start_date: string
-          start_time?: string | null
           status?: Database["public"]["Enums"]["leave_status"]
           updated_at?: string
         }
@@ -221,7 +217,6 @@ export type Database = {
           created_at?: string
           deducted_at?: string | null
           end_date?: string
-          end_time?: string | null
           id?: string
           leave_type?: string | null
           reason?: string | null
@@ -230,7 +225,6 @@ export type Database = {
           reviewed_by?: string | null
           staff_id?: string
           start_date?: string
-          start_time?: string | null
           status?: Database["public"]["Enums"]["leave_status"]
           updated_at?: string
         }
