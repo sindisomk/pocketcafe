@@ -13,12 +13,14 @@ interface StaffCardProps {
 const roleColors: Record<string, string> = {
   kitchen: 'bg-amber-100 text-amber-800 border-amber-200',
   floor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  bar: 'bg-purple-100 text-purple-800 border-purple-200',
   management: 'bg-indigo-100 text-indigo-800 border-indigo-200',
 };
 
 const roleLabels: Record<string, string> = {
   kitchen: 'Kitchen',
   floor: 'Floor',
+  bar: 'Bar',
   management: 'Management',
 };
 
