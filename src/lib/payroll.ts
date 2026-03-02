@@ -1,23 +1,18 @@
- import { AttendanceRecord } from '@/types/attendance';
- import { StaffProfile } from '@/types/staff';
- import { PayrollSummary, ComplianceWarning } from '@/types/attendance';
- import { Shift } from '@/types/schedule';
- import { differenceInHours, differenceInMinutes, parseISO, format } from 'date-fns';
- 
- // UK statutory holiday accrual rate for zero-hour contracts
- const HOLIDAY_ACCRUAL_RATE = 0.1207; // 12.07%
- 
- // UK minimum rest period between shifts (Working Time Regulations)
- const MIN_REST_HOURS = 11;
- 
- // Paid break duration in hours
- const PAID_BREAK_HOURS = 0.5; // 30 minutes
- 
-// Overtime threshold (hours per week before overtime kicks in)
-const WEEKLY_OVERTIME_THRESHOLD = 40;
+import { AttendanceRecord } from '@/types/attendance';
+import { StaffProfile } from '@/types/staff';
+import { PayrollSummary, ComplianceWarning } from '@/types/attendance';
+import { Shift } from '@/types/schedule';
+import { differenceInHours, differenceInMinutes, parseISO, format } from 'date-fns';
+import { OvertimeConfig, DEFAULT_OVERTIME } from '@/hooks/useOvertimeSettings';
 
-// Overtime pay multiplier (1.5x = time and a half)
-const OVERTIME_MULTIPLIER = 1.5;
+// UK statutory holiday accrual rate for zero-hour contracts
+const HOLIDAY_ACCRUAL_RATE = 0.1207; // 12.07%
+
+// UK minimum rest period between shifts (Working Time Regulations)
+const MIN_REST_HOURS = 11;
+
+// Paid break duration in hours
+const PAID_BREAK_HOURS = 0.5; // 30 minutes
 
  // ============================================
  // UK PAYE Income Tax Thresholds 2024/25
@@ -222,11 +217,12 @@ const OVERTIME_MULTIPLIER = 1.5;
  
 /**
  * Generate payroll summary for a staff member
- * Includes overtime calculation for hours over 40/week
+ * Includes overtime calculation based on configurable thresholds
  */
 export function generatePayrollSummary(
   staff: StaffProfile,
-  attendanceRecords: AttendanceRecord[]
+  attendanceRecords: AttendanceRecord[],
+  overtimeConfig: OvertimeConfig = DEFAULT_OVERTIME
 ): PayrollSummary {
   const staffRecords = attendanceRecords.filter(
     (r) => r.staff_id === staff.id && r.clock_out_time
@@ -234,10 +230,17 @@ export function generatePayrollSummary(
 
   let totalHoursWorked = 0;
   let paidBreakHours = 0;
+  let dailyOvertimeHours = 0;
 
   staffRecords.forEach((record) => {
-    totalHoursWorked += calculateHoursWorked(record);
-    
+    const recordHours = calculateHoursWorked(record);
+    totalHoursWorked += recordHours;
+
+    // Daily overtime: hours exceeding daily threshold per shift
+    if (overtimeConfig.enabled && recordHours > overtimeConfig.dailyThreshold) {
+      dailyOvertimeHours += recordHours - overtimeConfig.dailyThreshold;
+    }
+
     // Count break hours that were taken
     if (record.break_start_time && record.break_end_time) {
       const breakMins = differenceInMinutes(
@@ -246,23 +249,27 @@ export function generatePayrollSummary(
       );
       paidBreakHours += breakMins / 60;
     } else {
-      // If no break logged, assume 30-min paid break was included
       paidBreakHours += PAID_BREAK_HOURS;
     }
   });
 
-  // Calculate overtime (hours over 40 in the week)
-  const regularHoursWorked = Math.min(totalHoursWorked, WEEKLY_OVERTIME_THRESHOLD);
-  const overtimeHours = Math.max(0, totalHoursWorked - WEEKLY_OVERTIME_THRESHOLD);
-  
-  // Regular pay + overtime pay (1.5x rate)
+  // Calculate overtime: use the GREATER of daily accumulated OT or weekly OT
+  let overtimeHours = 0;
+  if (overtimeConfig.enabled) {
+    const weeklyOvertimeHours = Math.max(0, totalHoursWorked - overtimeConfig.weeklyThreshold);
+    overtimeHours = Math.max(dailyOvertimeHours, weeklyOvertimeHours);
+  }
+
+  const regularHoursWorked = totalHoursWorked - overtimeHours;
+
+  // Regular pay + overtime pay
   const regularPay = regularHoursWorked * staff.hourly_rate;
-  const overtimePay = overtimeHours * staff.hourly_rate * OVERTIME_MULTIPLIER;
+  const overtimePay = overtimeHours * staff.hourly_rate * overtimeConfig.rate;
   const grossPay = regularPay + overtimePay;
-  
+
   // Holiday accrual only applies to zero-hour contracts
-  const holidayAccrual = staff.contract_type === 'zero_rate' 
-    ? grossPay * HOLIDAY_ACCRUAL_RATE 
+  const holidayAccrual = staff.contract_type === 'zero_rate'
+    ? grossPay * HOLIDAY_ACCRUAL_RATE
     : 0;
 
   // Calculate lateness stats
@@ -281,13 +288,11 @@ export function generatePayrollSummary(
     grossPay: Math.round(grossPay * 100) / 100,
     overtimePay: Math.round(overtimePay * 100) / 100,
     holidayAccrual: Math.round(holidayAccrual * 100) / 100,
-    // Tax & NIC calculations
     taxCode: staff.tax_code || '1257L',
     nicCategory: staff.nic_category || 'A',
     incomeTax: Math.round(calculatePAYE(grossPay, staff.tax_code || '1257L') * 100) / 100,
     employeeNIC: Math.round(calculateEmployeeNIC(grossPay, staff.nic_category || 'A') * 100) / 100,
     netPay: Math.round((grossPay - calculatePAYE(grossPay, staff.tax_code || '1257L') - calculateEmployeeNIC(grossPay, staff.nic_category || 'A')) * 100) / 100,
-    // Lateness tracking
     lateCount,
     totalLateMinutes,
   };

@@ -25,6 +25,7 @@ import { useSchedule } from '@/hooks/useSchedule';
 import { usePayrollData } from '@/hooks/usePayrollData';
 import { useAllLeaveBalances } from '@/hooks/useLeaveBalance';
 import { useBudgetSettings } from '@/hooks/useBudgetSettings';
+import { useOvertimeSettings } from '@/hooks/useOvertimeSettings';
 import { generatePayrollSummary, checkRestPeriodViolations, exportPayrollCSV } from '@/lib/payroll';
 import { ComplianceWarningCard } from '@/components/payroll/ComplianceWarningCard';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -50,6 +51,7 @@ export default function Payroll() {
   );
   const { data: leaveBalances, isLoading: leaveLoading } = useAllLeaveBalances();
   const { settings: budgets } = useBudgetSettings();
+  const { settings: overtimeConfig } = useOvertimeSettings();
 
   const isLoading = staffLoading || shiftsLoading || attendanceLoading || leaveLoading;
 
@@ -64,8 +66,8 @@ export default function Payroll() {
 
   // Generate payroll summaries for all staff
   const payrollSummaries = useMemo(() => {
-    return staff.map((s) => generatePayrollSummary(s, attendanceRecords));
-  }, [staff, attendanceRecords]);
+    return staff.map((s) => generatePayrollSummary(s, attendanceRecords, overtimeConfig));
+  }, [staff, attendanceRecords, overtimeConfig]);
 
   // Check for UK compliance violations
   const complianceWarnings = useMemo(() => {
@@ -96,7 +98,7 @@ export default function Payroll() {
     };
 
     staff.forEach((s) => {
-      const summary = generatePayrollSummary(s, attendanceRecords);
+      const summary = generatePayrollSummary(s, attendanceRecords, overtimeConfig);
       if (costsByDept[s.role] !== undefined) {
         costsByDept[s.role] += summary.grossPay;
       }
@@ -113,7 +115,7 @@ export default function Payroll() {
       overBudget: totalActual > totalBudget,
       overAmount: Math.max(0, totalActual - totalBudget),
     };
-  }, [staff, attendanceRecords, budgets]);
+  }, [staff, attendanceRecords, budgets, overtimeConfig]);
 
   // Export to CSV
   const handleExportCSV = () => {
