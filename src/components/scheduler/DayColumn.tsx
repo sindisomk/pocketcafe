@@ -49,12 +49,12 @@ export function DayColumn({
 
   return (
     <div className={cn(
-      'flex flex-col min-w-[160px]',
+      'flex flex-col min-w-[120px]',
       isWeekend && 'bg-muted/30'
     )}>
       {/* Day Header */}
       <div className={cn(
-        'p-3 text-center border-b',
+        'p-2 text-center border-b',
         isToday && 'bg-primary/10'
       )}>
         <p className={cn(
@@ -87,7 +87,7 @@ export function DayColumn({
       </div>
 
       {/* Morning Shift */}
-      <div className="p-2 border-b flex-1">
+      <div className="p-1.5 border-b flex-1">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-medium text-muted-foreground">Morning</span>
           <span className="text-[10px] text-muted-foreground">
@@ -106,7 +106,7 @@ export function DayColumn({
       </div>
 
       {/* Evening Shift */}
-      <div className="p-2 flex-1">
+      <div className="p-1.5 flex-1">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-medium text-muted-foreground">Evening</span>
           <span className="text-[10px] text-muted-foreground">

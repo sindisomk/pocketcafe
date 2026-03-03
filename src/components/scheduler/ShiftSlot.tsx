@@ -106,7 +106,7 @@ export const ShiftSlot = forwardRef<HTMLDivElement, ShiftSlotProps>(function Shi
             )}
 
             <div className="flex items-center gap-2">
-              <Avatar className="h-7 w-7 border border-muted">
+              <Avatar className="h-6 w-6 border border-muted">
                 <AvatarImage 
                   src={shift.staff_profiles.profile_photo_url ?? undefined} 
                   alt={shift.staff_profiles.name} 

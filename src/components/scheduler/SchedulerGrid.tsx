@@ -240,7 +240,7 @@ export function SchedulerGrid() {
     >
       <div className="flex flex-col lg:flex-row gap-4 h-full">
         {/* Staff Sidebar */}
-        <Card className="lg:w-64 shrink-0">
+        <Card className="lg:w-52 shrink-0">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Users className="h-4 w-4" />
