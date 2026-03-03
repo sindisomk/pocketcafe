@@ -1,54 +1,39 @@
 
-# Fix: Overtime Calculation Not Working
 
-## Root Cause
+# Fix Scheduler Layout: Remove Horizontal Scrolling and Add Job Titles
 
-The overtime system has three disconnected pieces:
+## Problem
+The scheduling page is too wide, requiring horizontal scrolling to see Saturday and Sunday. The staff sidebar is 256px wide (`lg:w-64`) and each day column has a minimum width of 160px (`min-w-[160px]`), totaling ~1,376px minimum -- exceeding most screens.
 
-1. **OvertimeSettings UI** (`src/components/settings/OvertimeSettings.tsx`) -- allows configuring thresholds (weekly: 48h, daily: 8h, rate: 1.5x) but **never saves to the database**. It only shows a toast saying "saved."
-2. **Payroll calculation** (`src/lib/payroll.ts`) -- uses a **hardcoded** `WEEKLY_OVERTIME_THRESHOLD = 40` and ignores any settings. There is no daily overtime logic at all.
-3. **No `app_settings` row** exists for overtime configuration in the database.
+## Changes
 
-Additionally, the hardcoded weekly threshold of 40 hours means overtime only triggers when a single staff member works 40+ hours in a week. With typical 7-hour shifts, this requires 6+ shifts/week -- unlikely in most weeks. The settings UI defaults to 48 hours (UK Working Time Directive), making the mismatch even more confusing.
+### 1. Narrow the staff sidebar
+- `SchedulerGrid.tsx`: Reduce sidebar from `lg:w-64` (256px) to `lg:w-52` (208px)
 
-## Plan
+### 2. Remove avatar/initials from the DraggableStaffCard
+- `DraggableStaffCard.tsx`: Remove the `Avatar` component entirely, keeping only the grip icon, name, leave badge, and rate info
+- Add the staff member's job title next to the hourly rate (e.g. "Server -- £12.50/hr")
+- Import `JOB_TITLES` from `@/types/staff` to look up the label from `staff.job_title`
 
-### 1. Persist overtime settings to the database
+### 3. Reduce day column minimum width
+- `DayColumn.tsx`: Reduce `min-w-[160px]` to `min-w-[120px]` so all 7 columns fit without scrolling
+- Reduce padding slightly (p-3 to p-2 in header, p-2 to p-1.5 in shift sections)
 
-Update `OvertimeSettings.tsx` to read/write from the `app_settings` table using the key `overtime_config`. This follows the same pattern already used by other settings (budget, shift times, work hours).
+### 4. Compact shift slot cards (in day columns)
+- `ShiftSlot.tsx`: Reduce avatar size from `h-7 w-7` to `h-6 w-6` and tighten padding to save space
 
-### 2. Create a hook to read overtime settings
-
-Create `src/hooks/useOvertimeSettings.ts` that fetches the `overtime_config` from `app_settings` and provides defaults matching the current UI defaults (weekly: 48h, daily: 8h, rate: 1.5x, bankHolidayRate: 2.0).
-
-### 3. Update payroll calculation to use dynamic settings
-
-Modify `generatePayrollSummary` in `src/lib/payroll.ts` to:
-- Accept overtime config as a parameter (threshold, multiplier, daily threshold)
-- Implement **daily** overtime detection (hours over daily threshold per attendance record)
-- Apply the correct multiplier from settings instead of the hardcoded 1.5x
-- Remove the hardcoded `WEEKLY_OVERTIME_THRESHOLD` and `OVERTIME_MULTIPLIER` constants
-
-### 4. Wire settings into the Payroll page
-
-Update `src/pages/Payroll.tsx` to fetch overtime settings via the new hook and pass them into `generatePayrollSummary`.
-
-### 5. Update CSV export
-
-Ensure `exportPayrollCSV` continues to work with the updated `PayrollSummary` structure (no schema changes needed since the interface already has `overtimeHours` and `overtimePay`).
+### No functionality changes
+All drag-and-drop, cost calculations, leave/no-show logic, and publish workflow remain untouched. Only visual sizing and the addition of job title text are affected.
 
 ## Technical Details
 
-- **Database**: No migration needed. Reuses existing `app_settings` table with key `overtime_config`.
-- **Settings shape stored in DB**:
-```text
-{
-  enabled: boolean,
-  weeklyThreshold: number,
-  dailyThreshold: number,
-  rate: number,
-  bankHolidayRate: number
-}
-```
-- **Files modified**: `OvertimeSettings.tsx`, `payroll.ts`, `Payroll.tsx`, plus new `useOvertimeSettings.ts` hook.
-- **Files unchanged**: Types, CSV export function signature, attendance types.
+**Files modified:**
+- `src/components/scheduler/SchedulerGrid.tsx` -- sidebar width class
+- `src/components/scheduler/DraggableStaffCard.tsx` -- remove Avatar, add job title lookup
+- `src/components/scheduler/DayColumn.tsx` -- reduce min-width and padding
+- `src/components/scheduler/ShiftSlot.tsx` -- compact avatar and padding
+
+**Layout math after changes:**
+- Sidebar: ~208px + gap 16px
+- 7 day columns x 120px = 840px
+- Total: ~1,064px -- comfortably fits a 1280px+ screen
