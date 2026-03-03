@@ -1,7 +1,7 @@
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { format, parseISO } from 'date-fns';
-import { GripVertical, CalendarOff } from 'lucide-react';
+import { CalendarOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { StaffProfile, JOB_TITLES } from '@/types/staff';
@@ -47,10 +47,8 @@ export function DraggableStaffCard({ staff, leaveDaysInWeek = [], weekDays = [] 
       {...listeners}
       {...attributes}
     >
-      <div className="flex items-center gap-2">
-        <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
-
-        <div className="flex-1 min-w-0">
+      <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-medium truncate">{staff.name}</p>
             {onLeave && (
