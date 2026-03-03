@@ -2,7 +2,6 @@ import { forwardRef } from 'react';
 import { format } from 'date-fns';
 import { useDroppable } from '@dnd-kit/core';
 import { X, AlertTriangle } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ShiftWithStaff, ShiftType, SHIFT_TIMES, getEveningHours } from '@/types/schedule';
 import { cn } from '@/lib/utils';
@@ -77,12 +76,6 @@ export const ShiftSlot = forwardRef<HTMLDivElement, ShiftSlotProps>(function Shi
       {shifts.map((shift) => {
         const showWarning = hasRestWarning(shift.staff_id);
         const isNoShow = noShowShiftIds?.has(shift.id) ?? false;
-        const initials = shift.staff_profiles.name
-          .split(' ')
-          .map((n) => n[0])
-          .join('')
-          .toUpperCase()
-          .slice(0, 2);
 
         return (
           <div
@@ -106,16 +99,6 @@ export const ShiftSlot = forwardRef<HTMLDivElement, ShiftSlotProps>(function Shi
             )}
 
             <div className="flex items-center gap-2">
-              <Avatar className="h-6 w-6 border border-muted">
-                <AvatarImage 
-                  src={shift.staff_profiles.profile_photo_url ?? undefined} 
-                  alt={shift.staff_profiles.name} 
-                />
-                <AvatarFallback className="bg-muted text-muted-foreground text-[10px]">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium truncate">{shift.staff_profiles.name}</p>
                 <p className="text-[10px] text-muted-foreground">
