@@ -6,6 +6,7 @@ import { NotificationBell } from './NotificationBell';
 import { ThemeToggle } from './ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
 import { useOutletSettings } from '@/hooks/useOutletSettings';
+import { useNoShowDetection } from '@/hooks/useNoShowDetection';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,9 @@ export function ProtectedLayout() {
   const location = useLocation();
   const { user, loading, isAdmin, isManager, signOut } = useAuth();
   const { settings: outletSettings } = useOutletSettings();
+
+  // Run no-show detection for managers/admins on any protected page
+  useNoShowDetection({ enabled: isAdmin || isManager });
 
   const handleSignOut = async () => {
     const { error } = await signOut();
